@@ -1,0 +1,129 @@
+package com.sapphircrypt.sapphirypt.storage;
+
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Properties;
+
+/**
+ * Non-sensitive user preferences persisted locally under {@code ~/.sapphirypt/settings.properties}.
+ */
+public final class AppSettings {
+    private static final int MAX_RECENT_VAULTS = 8;
+
+    private CpuProfile cpuProfile = CpuProfile.BALANCED;
+    private int maxWorkersOverride = 0; // 0 = automatic
+    private int autoLockMinutes = 10;   // 0 = disabled
+    private final List<Path> recentVaults = new ArrayList<>();
+
+    public static Path settingsPath() {
+        return Path.of(System.getProperty("user.home"), ".sapphirypt", "settings.properties");
+    }
+
+    public static AppSettings load() {
+        AppSettings settings = new AppSettings();
+        Path path = settingsPath();
+        if (!Files.isRegularFile(path)) {
+            return settings;
+        }
+        Properties props = new Properties();
+        try (InputStream in = Files.newInputStream(path)) {
+            props.load(in);
+            String profileStr = props.getProperty("cpuProfile", CpuProfile.BALANCED.name());
+            try {
+                settings.cpuProfile = CpuProfile.valueOf(profileStr);
+            } catch (IllegalArgumentException ignored) {
+                settings.cpuProfile = CpuProfile.BALANCED;
+            }
+            settings.maxWorkersOverride = parseInt(props.getProperty("maxWorkersOverride"), 0, 0, 16);
+            settings.autoLockMinutes = parseInt(props.getProperty("autoLockMinutes"), 10, 0, 240);
+            int recentCount = parseInt(props.getProperty("recentCount"), 0, 0, MAX_RECENT_VAULTS);
+            for (int i = 0; i < recentCount; i++) {
+                String p = props.getProperty("recent." + i);
+                if (p != null && !p.isBlank()) settings.recentVaults.add(Path.of(p));
+            }
+        } catch (IOException ignored) {
+        }
+        return settings;
+    }
+
+    public void save() {
+        Path path = settingsPath();
+        try {
+            Path parent = path.getParent();
+            if (parent != null) Files.createDirectories(parent);
+            Properties props = new Properties();
+            props.setProperty("cpuProfile", cpuProfile.name());
+            props.setProperty("maxWorkersOverride", Integer.toString(maxWorkersOverride));
+            props.setProperty("autoLockMinutes", Integer.toString(autoLockMinutes));
+            props.setProperty("recentCount", Integer.toString(recentVaults.size()));
+            for (int i = 0; i < recentVaults.size(); i++) {
+                props.setProperty("recent." + i, recentVaults.get(i).toAbsolutePath().toString());
+            }
+            try (OutputStream out = Files.newOutputStream(path)) {
+                props.store(out, "Sapphirypt User Preferences");
+            }
+        } catch (IOException ignored) {
+        }
+    }
+
+    public CpuProfile cpuProfile() {
+        return cpuProfile;
+    }
+
+    public void setCpuProfile(CpuProfile cpuProfile) {
+        this.cpuProfile = cpuProfile == null ? CpuProfile.BALANCED : cpuProfile;
+    }
+
+    public int maxWorkersOverride() {
+        return maxWorkersOverride;
+    }
+
+    public void setMaxWorkersOverride(int maxWorkersOverride) {
+        this.maxWorkersOverride = Math.max(0, Math.min(16, maxWorkersOverride));
+    }
+
+    public int autoLockMinutes() {
+        return autoLockMinutes;
+    }
+
+    public void setAutoLockMinutes(int autoLockMinutes) {
+        this.autoLockMinutes = Math.max(0, Math.min(240, autoLockMinutes));
+    }
+
+    public List<Path> recentVaults() {
+        return List.copyOf(recentVaults);
+    }
+
+    public void addRecentVault(Path vaultPath) {
+        if (vaultPath == null) return;
+
+        Path normalized = vaultPath.toAbsolutePath().normalize();
+        recentVaults.remove(normalized);
+        recentVaults.add(0, normalized);
+        while (recentVaults.size() > MAX_RECENT_VAULTS) {
+            recentVaults.remove(recentVaults.size() - 1);
+        }
+    }
+
+    public void removeRecentVault(Path vaultPath) {
+        if (vaultPath != null) {
+            recentVaults.remove(vaultPath.toAbsolutePath().normalize());
+        }
+    }
+
+    private static int parseInt(String raw, int fallback, int min, int max) {
+        if (raw == null) return fallback;
+
+        try {
+            int v = Integer.parseInt(raw.trim());
+            return Math.max(min, Math.min(max, v));
+        } catch (NumberFormatException e) {
+            return fallback;
+        }
+    }
+}
