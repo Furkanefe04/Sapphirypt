@@ -13,7 +13,6 @@ import javafx.scene.Node;
 import javafx.scene.Scene;
 import javafx.scene.control.Label;
 import javafx.scene.control.ProgressBar;
-import javafx.scene.effect.DropShadow;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.layout.StackPane;
@@ -24,8 +23,8 @@ import javafx.stage.StageStyle;
 import javafx.util.Duration;
 
 /**
- * Frameless translucent splash screen displaying the Concept 7 Sapphire Vault logo,
- * startup initialization progress, and smooth handoff into the main window.
+ * Minimal theme-aware splash screen showcasing the Concept 7 logo with breathing sapphire glow,
+ * staggered entrance transitions, and sleek progress animation.
  */
 public final class SplashScreen {
     private static final String CSS_PATH = "/com/sapphircrypt/sapphirypt/sapphirypt.css";
@@ -33,13 +32,19 @@ public final class SplashScreen {
 
     private final Stage stage;
     private final VBox card;
+    private final Node logoNode;
+    private final Label titleLabel;
     private final ProgressBar progressBar;
-    private final Label statusLabel;
+    private final Timeline breathingGlowTimeline;
 
     private Timeline progressTimeline;
     private boolean closed;
 
     public SplashScreen() {
+        this(true);
+    }
+
+    public SplashScreen(boolean darkTheme) {
         this.stage = new Stage(StageStyle.TRANSPARENT);
         this.stage.setTitle("Sapphirypt");
         var appIcons = SapphireIcons.getApplicationIcons();
@@ -47,46 +52,30 @@ public final class SplashScreen {
             this.stage.getIcons().setAll(appIcons);
         }
 
-        Node logoNode = buildLogoNode();
+        this.logoNode = buildLogoNode();
+        this.breathingGlowTimeline = MotionFx.createSapphireBreathingGlow(this.logoNode, darkTheme);
 
-        Label titleLabel = new Label("Sapphirypt");
-        titleLabel.getStyleClass().add("splash-title");
-
-        Label subtitleLabel = new Label("Şifreli Dijital Kasa");
-        subtitleLabel.getStyleClass().add("splash-subtitle");
-
-        Label taglineLabel = new Label("AES-256-GCM • Argon2id • Çevrimdışı");
-        taglineLabel.getStyleClass().add("splash-tagline");
-
-        VBox textGroup = new VBox(3, titleLabel, subtitleLabel, taglineLabel);
-        textGroup.setAlignment(Pos.CENTER);
+        this.titleLabel = new Label("Sapphirypt");
+        this.titleLabel.getStyleClass().add("splash-title");
 
         this.progressBar = new ProgressBar(0.08);
         this.progressBar.getStyleClass().add("splash-progress");
-        this.progressBar.setPrefWidth(280);
-        this.progressBar.setPrefHeight(6);
-        this.progressBar.setMinHeight(6);
-        this.progressBar.setMaxHeight(6);
+        this.progressBar.setPrefWidth(240);
+        this.progressBar.setPrefHeight(4);
+        this.progressBar.setMinHeight(4);
+        this.progressBar.setMaxHeight(4);
 
-        this.statusLabel = new Label("Başlatılıyor...");
-        this.statusLabel.getStyleClass().add("splash-status");
-
-        Label versionLabel = new Label("v0.1.0");
-        versionLabel.getStyleClass().add("splash-version");
-
-        VBox progressGroup = new VBox(7, progressBar, statusLabel, versionLabel);
-        progressGroup.setAlignment(Pos.CENTER);
-
-        this.card = new VBox(14, logoNode, textGroup, progressGroup);
+        this.card = new VBox(18, logoNode, titleLabel, progressBar);
         this.card.setAlignment(Pos.CENTER);
         this.card.getStyleClass().add("splash-card");
-        this.card.setPrefWidth(468);
-        this.card.setMinHeight(336);
-        this.card.setPadding(new Insets(24, 32, 22, 32));
+        this.card.setPrefWidth(390);
+        this.card.setMinHeight(296);
+        this.card.setPadding(new Insets(30, 36, 28, 36));
 
         StackPane root = new StackPane(this.card);
         root.setPadding(new Insets(24));
         root.setStyle("-fx-background-color: transparent;");
+        ThemeManager.applyClasses(root, darkTheme);
 
         Scene scene = new Scene(root);
         scene.setFill(Color.TRANSPARENT);
@@ -98,7 +87,6 @@ public final class SplashScreen {
     }
 
     private Node buildLogoNode() {
-        Node logo;
         Image splashImage = SapphireIcons.getSplashLogoImage();
         if (splashImage != null) {
             ImageView view = new ImageView(splashImage);
@@ -106,21 +94,13 @@ public final class SplashScreen {
             view.setFitHeight(LOGO_DISPLAY_SIZE);
             view.setPreserveRatio(true);
             view.setSmooth(true);
-            logo = view;
-        } else {
-            logo = SapphireIcons.createSapphireVaultEmblem(LOGO_DISPLAY_SIZE);
+            return view;
         }
-
-        DropShadow sapphireGlow = new DropShadow();
-        sapphireGlow.setColor(Color.rgb(59, 130, 246, 0.38));
-        sapphireGlow.setRadius(24);
-        sapphireGlow.setSpread(0.14);
-        logo.setEffect(sapphireGlow);
-        return logo;
+        return SapphireIcons.createSapphireVaultEmblem(LOGO_DISPLAY_SIZE);
     }
 
     /**
-     * Shows the splash stage centered on screen with an entrance fade and scale transition.
+     * Shows the splash stage centered on screen with staggered logo, title, and bar entrance.
      */
     public void show() {
         if (closed) {
@@ -130,48 +110,72 @@ public final class SplashScreen {
         card.setScaleX(0.94);
         card.setScaleY(0.94);
 
+        logoNode.setOpacity(0.0);
+        logoNode.setScaleX(0.84);
+        logoNode.setScaleY(0.84);
+
         stage.show();
         stage.centerOnScreen();
 
-        FadeTransition fadeIn = new FadeTransition(Duration.millis(350), card);
-        fadeIn.setFromValue(0.0);
-        fadeIn.setToValue(1.0);
+        FadeTransition cardFade = new FadeTransition(Duration.millis(300), card);
+        cardFade.setFromValue(0.0);
+        cardFade.setToValue(1.0);
+        cardFade.setInterpolator(MotionFx.EASE_OUT_EXPO);
 
-        ScaleTransition scaleIn = new ScaleTransition(Duration.millis(350), card);
-        scaleIn.setFromX(0.94);
-        scaleIn.setFromY(0.94);
-        scaleIn.setToX(1.0);
-        scaleIn.setToY(1.0);
+        ScaleTransition cardScale = new ScaleTransition(Duration.millis(320), card);
+        cardScale.setFromX(0.94);
+        cardScale.setFromY(0.94);
+        cardScale.setToX(1.0);
+        cardScale.setToY(1.0);
+        cardScale.setInterpolator(MotionFx.EASE_OUT_EXPO);
 
-        new ParallelTransition(fadeIn, scaleIn).play();
+        FadeTransition logoFade = new FadeTransition(Duration.millis(320), logoNode);
+        logoFade.setFromValue(0.0);
+        logoFade.setToValue(1.0);
+        logoFade.setInterpolator(MotionFx.EASE_OUT_EXPO);
+
+        ScaleTransition logoPop = new ScaleTransition(Duration.millis(380), logoNode);
+        logoPop.setFromX(0.84);
+        logoPop.setFromY(0.84);
+        logoPop.setToX(1.0);
+        logoPop.setToY(1.0);
+        logoPop.setInterpolator(MotionFx.EASE_OUT_BACK);
+
+        new ParallelTransition(cardFade, cardScale, logoFade, logoPop).play();
+        MotionFx.playEntrance(titleLabel, 10.0, 80.0, 280.0);
+        MotionFx.playEntrance(progressBar, 8.0, 150.0, 280.0);
     }
 
     /**
-     * Smoothly animates the progress bar to the target progress and updates the status message.
+     * Smoothly animates the progress bar to the target progress value.
      */
-    public void updateProgress(double targetProgress, String message) {
+    public void updateProgress(double targetProgress) {
+        updateProgress(targetProgress, null);
+    }
+
+    /**
+     * Smoothly animates the progress bar to the target progress value.
+     */
+    public void updateProgress(double targetProgress, String ignoredMessage) {
         if (!Platform.isFxApplicationThread()) {
-            Platform.runLater(() -> updateProgress(targetProgress, message));
+            Platform.runLater(() -> updateProgress(targetProgress, ignoredMessage));
             return;
         }
         if (closed) {
             return;
-        }
-        if (message != null && !message.isBlank()) {
-            statusLabel.setText(message);
         }
         double clamped = Math.max(0.0, Math.min(1.0, targetProgress));
         if (progressTimeline != null) {
             progressTimeline.stop();
         }
         progressTimeline = new Timeline(new KeyFrame(
-                Duration.millis(180),
-                new KeyValue(progressBar.progressProperty(), clamped)));
+                Duration.millis(200),
+                new KeyValue(progressBar.progressProperty(), clamped, MotionFx.EASE_OUT_EXPO)));
         progressTimeline.play();
     }
 
     /**
-     * Fades out the splash screen and hands off visibility to the main window while guarding implicitExit.
+     * Fades and zooms out the splash screen gently and hands off visibility to the main window.
      */
     public void transitionTo(Runnable showMainWindow) {
         Runnable task = () -> {
@@ -181,12 +185,20 @@ public final class SplashScreen {
                 }
                 return;
             }
+            breathingGlowTimeline.stop();
             FadeTransition fadeOut = new FadeTransition(Duration.millis(240), card);
             fadeOut.setFromValue(card.getOpacity());
             fadeOut.setToValue(0.0);
-            fadeOut.setOnFinished(ev -> {
+            fadeOut.setInterpolator(MotionFx.EASE_OUT_EXPO);
+
+            ScaleTransition scaleOut = new ScaleTransition(Duration.millis(240), card);
+            scaleOut.setToX(1.03);
+            scaleOut.setToY(1.03);
+            scaleOut.setInterpolator(MotionFx.EASE_OUT_EXPO);
+
+            ParallelTransition out = new ParallelTransition(fadeOut, scaleOut);
+            out.setOnFinished(ev -> {
                 closed = true;
-                // Prevent JavaFX from exiting between closing the splash stage and showing the primary stage.
                 Platform.setImplicitExit(false);
                 try {
                     if (showMainWindow != null) {
@@ -198,7 +210,7 @@ public final class SplashScreen {
                     Platform.setImplicitExit(true);
                 }
             });
-            fadeOut.play();
+            out.play();
         };
 
         if (Platform.isFxApplicationThread()) {
@@ -214,6 +226,7 @@ public final class SplashScreen {
     public void closeImmediately() {
         Runnable closeTask = () -> {
             closed = true;
+            breathingGlowTimeline.stop();
             if (progressTimeline != null) {
                 progressTimeline.stop();
             }

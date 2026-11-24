@@ -157,6 +157,102 @@ public final class SapphireIcons {
         return svg("M12 2L4 5v6.1c0 5.1 3.4 9.7 8 10.9 4.6-1.2 8-5.8 8-10.9V5l-8-3z", size, colorHex);
     }
 
+    public static Node sun(double size, String colorHex) {
+        return svg("M12 7a5 5 0 1 0 0 10 5 5 0 0 0 0-10zm0-5a1 1 0 0 1 1 1v2a1 1 0 1 1-2 0V3a1 1 0 0 1 1-1zm0 16a1 1 0 0 1 1 1v2a1 1 0 1 1-2 0v-2a1 1 0 0 1 1-1zM4.22 4.22a1 1 0 0 1 1.41 0l1.42 1.42a1 1 0 1 1-1.42 1.41L4.22 5.64a1 1 0 0 1 0-1.42zm12.73 12.73a1 1 0 0 1 1.41 0l1.42 1.41a1 1 0 1 1-1.42 1.42l-1.41-1.42a1 1 0 0 1 0-1.41zM2 12a1 1 0 0 1 1-1h2a1 1 0 1 1 0 2H3a1 1 0 0 1-1-1zm16 0a1 1 0 0 1 1-1h2a1 1 0 1 1 0 2h-2a1 1 0 0 1-1-1zM5.64 16.95a1 1 0 0 1 1.41 1.41l-1.41 1.42a1 1 0 1 1-1.42-1.42l1.42-1.41zM18.36 4.22a1 1 0 0 1 1.42 1.42l-1.42 1.41a1 1 0 1 1-1.41-1.41l1.41-1.42z", size, colorHex);
+    }
+
+    public static Node moon(double size, String colorHex) {
+        return svg("M12.3 3.1a8.5 8.5 0 1 0 8.6 11.4 7 7 0 0 1-8.6-11.4z", size, colorHex);
+    }
+
+    public static Node autoTheme(double size, String colorHex) {
+        return svg("M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm0 2v16a8 8 0 0 1 0-16z", size, colorHex);
+    }
+
+    public static Node settings(double size, String colorHex) {
+        return svg("M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.61-.22l-2.39.96a7.1 7.1 0 0 0-1.63-.94l-.36-2.54a.49.49 0 0 0-.49-.42h-3.84a.49.49 0 0 0-.49.42l-.36 2.54a7.1 7.1 0 0 0-1.63.94l-2.39-.96a.49.49 0 0 0-.61.22L2.71 8.84a.5.5 0 0 0 .12.64l2.03 1.58c-.05.3-.08.62-.08.94s.03.64.08.94l-2.03 1.58a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.61.22l2.39-.96c.5.38 1.05.7 1.63.94l.36 2.54c.04.24.25.42.49.42h3.84c.24 0 .45-.18.49-.42l.36-2.54c.58-.24 1.13-.56 1.63-.94l2.39.96c.22.09.48 0 .61-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.01-1.58zM12 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z", size, colorHex);
+    }
+
+    public static Node search(double size, String colorHex) {
+        return svg("M15.5 14h-.79l-.28-.27A6.5 6.5 0 1 0 14 15.5l.27.28v.79l5 5 1.5-1.5-5-5zm-6 0a4.5 4.5 0 1 1 0-9 4.5 4.5 0 0 1 0 9z", size, colorHex);
+    }
+
+    public static Node plus(double size, String colorHex) {
+        return svg("M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7V4z", size, colorHex);
+    }
+
+    public static Node grid(double size, String colorHex) {
+        return svg("M3 3h8v8H3V3zm10 0h8v8h-8V3zM3 13h8v8H3v-8zm10 0h8v8h-8v-8z", size, colorHex);
+    }
+
+    public static Node list(double size, String colorHex) {
+        return svg("M3 5h2v2H3V5zm4 0h14v2H7V5zM3 11h2v2H3v-2zm4 0h14v2H7v-2zm-4 6h2v2H3v-2zm4 0h14v2H7v-2z", size, colorHex);
+    }
+
+    public static Node eye(double size, String colorHex) {
+        return svg("M12 5C6.5 5 2.1 8.4 1 12c1.1 3.6 5.5 7 11 7s9.9-3.4 11-7c-1.1-3.6-5.5-7-11-7zm0 11.5A4.5 4.5 0 1 1 12 7.5a4.5 4.5 0 0 1 0 9zm0-7a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z", size, colorHex);
+    }
+
+    public static Node eyeOff(double size, String colorHex) {
+        return svg("M3.3 2L2 3.3l3.1 3.1C3.2 7.8 1.8 9.8 1 12c1.1 3.6 5.5 7 11 7 2 0 3.9-.5 5.5-1.3L20.7 21l1.3-1.3L3.3 2zM12 16.5a4.5 4.5 0 0 1-4.5-4.5c0-.6.1-1.2.4-1.8l5.9 5.9c-.6.3-1.2.4-1.8.4zm4.4-2.5l-6.4-6.4c.6-.1 1.3-.1 2-.1 5.5 0 9.9 3.4 11 7-.6 2-2.1 3.8-4 5.1l-2.6-2.6c.4-.9.4-2 0-3z", size, colorHex);
+    }
+
+    public static Node moreHorizontal(double size, String colorHex) {
+        return svg("M6 10a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4zm6 0a2 2 0 1 0 0 4 2 2 0 0 0 0-4z", size, colorHex);
+    }
+
+    public static Node close(double size, String colorHex) {
+        return svg("M18.3 5.71a1 1 0 0 0-1.41 0L12 10.59 7.11 5.7A1 1 0 1 0 5.7 7.11L10.59 12 5.7 16.89a1 1 0 1 0 1.41 1.41L12 13.41l4.89 4.89a1 1 0 0 0 1.41-1.41L13.41 12l4.89-4.89a1 1 0 0 0 0-1.4z", size, colorHex);
+    }
+
+    public static Node minimize(double size, String colorHex) {
+        return svg("M5 11h14v2H5z", size, colorHex);
+    }
+
+    public static Node maximize(double size, String colorHex) {
+        return svg("M5 5h14v14H5V5zm2 2v10h10V7H7z", size, colorHex);
+    }
+
+    public static Node restore(double size, String colorHex) {
+        return svg("M7 7V4h13v13h-3v3H4V7h3zm2 0h8v8h1V6H9v1zm-3 2v9h9V9H6z", size, colorHex);
+    }
+
+    public static Node trash(double size, String colorHex) {
+        return svg("M6 7h12v13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V7zm3-4h6l1 2h4v2H4V5h4l1-2z", size, colorHex);
+    }
+
+    public static Node edit(double size, String colorHex) {
+        return svg("M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zm17.71-10.21a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z", size, colorHex);
+    }
+
+    public static Node download(double size, String colorHex) {
+        return svg("M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z", size, colorHex);
+    }
+
+    public static Node compress(double size, String colorHex) {
+        return svg("M4 10h6V4H8v3.59L4.71 4.29 3.29 5.71 6.59 9H4v1zm16 4h-6v6h2v-3.59l3.29 3.3 1.42-1.42-3.3-3.29H20v-1zM4 14v1h2.59l-3.3 3.29 1.42 1.42 3.29-3.3V20h2v-6H4zm16-4V9h-2.59l3.3-3.29-1.42-1.42-3.29 3.3V4h-2v6h6z", size, colorHex);
+    }
+
+    public static Node check(double size, String colorHex) {
+        return svg("M9 16.2L4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4L9 16.2z", size, colorHex);
+    }
+
+    public static Node warning(double size, String colorHex) {
+        return svg("M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z", size, colorHex);
+    }
+
+    public static Node info(double size, String colorHex) {
+        return svg("M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z", size, colorHex);
+    }
+
+    public static Node chevronRight(double size, String colorHex) {
+        return svg("M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z", size, colorHex);
+    }
+
+    public static Node folderOpen(double size, String colorHex) {
+        return svg("M20 6h-8l-2-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2zm0 12H4V8h16v10z", size, colorHex);
+    }
+
     private static Node svg(String pathData, double size, String colorHex) {
         SVGPath path = new SVGPath();
         path.setContent(pathData);

@@ -8,8 +8,12 @@ import com.sapphircrypt.sapphirypt.storage.CancellationToken;
 import com.sapphircrypt.sapphirypt.storage.ProgressListener;
 import com.sapphircrypt.sapphirypt.storage.VaultCancelledException;
 import com.sapphircrypt.sapphirypt.storage.VaultSession;
+import com.sapphircrypt.sapphirypt.ui.UiShell.ToastType;
 import com.sapphircrypt.sapphirypt.ui.VaultDialogs.ConflictAction;
 import com.sapphircrypt.sapphirypt.ui.VaultDialogs.ConflictResolution;
+import javafx.animation.FadeTransition;
+import javafx.animation.ParallelTransition;
+import javafx.animation.TranslateTransition;
 import javafx.application.Platform;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.beans.property.ReadOnlyStringWrapper;
@@ -22,6 +26,7 @@ import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
+import javafx.scene.control.MenuButton;
 import javafx.scene.control.MenuItem;
 import javafx.scene.control.ProgressBar;
 import javafx.scene.control.ScrollPane;
@@ -36,6 +41,7 @@ import javafx.scene.control.TableView;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.ToggleButton;
+import javafx.scene.control.Tooltip;
 import javafx.scene.control.TreeCell;
 import javafx.scene.control.TreeItem;
 import javafx.scene.control.TreeView;
@@ -49,6 +55,7 @@ import javafx.scene.input.KeyCodeCombination;
 import javafx.scene.input.KeyCombination;
 import javafx.scene.input.TransferMode;
 import javafx.scene.layout.BorderPane;
+import javafx.scene.layout.FlowPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
@@ -57,6 +64,7 @@ import javafx.scene.layout.VBox;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
 import javafx.stage.Window;
+import javafx.util.Duration;
 
 import java.awt.Desktop;
 import java.io.ByteArrayInputStream;
@@ -66,6 +74,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
@@ -78,11 +87,11 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 /**
- * Main unlocked vault workspace providing folder tree navigation, file table, search/filter/sort,
- * drag-and-drop import & internal moves, built-in text/image preview, external open,
- * storage breakdown + compaction, key management, and live CPU profile settings.
+ * Modern unlocked vault workspace supporting List + Grid file views, folder tree navigation,
+ * compact visual storage breakdown, theme-aware preview inspector, integrated status bar,
+ * and floating crypto operation pill.
  */
-public final class VaultView extends BorderPane implements AutoCloseable {
+public final class VaultView extends StackPane implements AutoCloseable {
 
     private static final DataFormat INTERNAL_ENTRY_IDS = new DataFormat("application/x-sapphirypt-entry-ids");
     private static final long MAX_TEXT_PREVIEW_BYTES = 2L * 1024L * 1024L;
@@ -98,41 +107,63 @@ public final class VaultView extends BorderPane implements AutoCloseable {
         COPY, CUT
     }
 
-    private record EntryRow(VaultEntry entry, long computedSize) { }
+    private enum ViewMode {
+        LIST, GRID
+    }
+
+    private record EntryRow(VaultEntry entry, long computedSize) {
+    }
 
     private final VaultSession session;
     private final AppSettings settings;
-    private final AutoLockMonitor autoLockMonitor;
-    private final Runnable onLockRequested;
+    private final UiShell shell;
+    private final ThemeManager themeManager;
     private final Consumer<Path> onVaultRenamed;
     private final Runnable onVaultDeleted;
     private final ExecutorService bgExecutor;
+    private final Runnable themeListener = this::refreshThemeSensitiveUi;
 
     private UUID currentFolderId = VaultMetadata.ROOT_ID;
     private final AtomicReference<CancellationToken> currentTaskToken = new AtomicReference<>();
     private final List<UUID> clipboardEntryIds = new ArrayList<>();
     private ClipboardMode clipboardMode;
 
-    // UI Components
-    private final Label vaultNameLbl = new Label();
-    private final Label commitBadge = new Label();
-    private final Label cpuBadge = new Label();
+    // View & selection state
+    private ViewMode viewMode = ViewMode.LIST;
+    private List<EntryRow> currentDisplayedRows = List.of();
+    private final Set<UUID> gridSelectedIds = new LinkedHashSet<>();
+
+    // Top action bar components
     private final TreeView<VaultEntry> folderTree = new TreeView<>();
     private final HBox breadcrumbBar = new HBox(4);
     private final TextField searchField = new TextField();
-    private final CheckBox globalSearchCheck = new CheckBox("Tüm kasada ara");
+    private final CheckBox globalSearchCheck = new CheckBox("Tüm kasada");
     private final ComboBox<String> extFilterCombo = new ComboBox<>();
-    private final TableView<EntryRow> entryTable = new TableView<>();
+    private final Button listModeBtn = new Button();
+    private final Button gridModeBtn = new Button();
+    private final Button exportBtn = new Button("Dışa Aktar");
+    private final ToggleButton previewToggle = new ToggleButton("Önizleme");
 
-    // Storage breakdown labels
+    // Center content views
+    private final TableView<EntryRow> entryTable = new TableView<>();
+    private final FlowPane gridFlow = new FlowPane(12, 12);
+    private final ScrollPane gridScroll = new ScrollPane(gridFlow);
+    private final StackPane contentSwitchPane = new StackPane();
+
+    // Compact storage breakdown
+    private final Label storageHeaderSummary = new Label("-");
+    private final Region storageActiveBar = new Region();
+    private final Region storageOrphanBar = new Region();
+    private final HBox storageBarTrack = new HBox();
+    private final Label storageShortLegend = new Label("-");
+    private final VBox storageDetailsBox = new VBox(5);
     private final Label logicalSizeVal = new Label("-");
     private final Label physicalSizeVal = new Label("-");
     private final Label activeBytesVal = new Label("-");
     private final Label orphanBytesVal = new Label("-");
     private final Label reclaimableVal = new Label("-");
-    private final Label blockSharingVal = new Label("-");
 
-    // Inspector & Preview pane
+    // Inspector & preview pane
     private final VBox inspectorPane = new VBox(10);
     private final Label detailName = new Label("Öğe seçilmedi");
     private final Label detailMeta = new Label("Önizleme veya ayrıntı için bir dosya/klasör seçin.");
@@ -140,10 +171,13 @@ public final class VaultView extends BorderPane implements AutoCloseable {
     private final Button openExternalBtn = new Button("Harici Uygulamada Aç");
     private final Button exportSelectedBtn = new Button("Dışa Aktar");
 
-    // Status bar
-    private final ProgressBar progressBar = new ProgressBar(0);
-    private final Label statusLabel = new Label("Hazır");
-    private final Button cancelTaskBtn = new Button("İptal");
+    // Integrated status bar & floating operation pill
+    private final Label statusCountLbl = new Label("0 öğe");
+    private final Label statusEnvLbl = new Label();
+    private final HBox floatingProgressPill = new HBox(10);
+    private final ProgressBar pillProgressBar = new ProgressBar(0);
+    private final Label pillStatusLbl = new Label("Hazır");
+    private final Button pillCancelBtn = new Button("İptal");
 
     private SplitPane mainSplit;
     private boolean inspectorVisible = true;
@@ -152,14 +186,14 @@ public final class VaultView extends BorderPane implements AutoCloseable {
     public VaultView(
             VaultSession session,
             AppSettings settings,
-            AutoLockMonitor autoLockMonitor,
-            Runnable onLockRequested,
+            UiShell shell,
+            ThemeManager themeManager,
             Consumer<Path> onVaultRenamed,
             Runnable onVaultDeleted) {
         this.session = session;
         this.settings = settings;
-        this.autoLockMonitor = autoLockMonitor;
-        this.onLockRequested = onLockRequested;
+        this.shell = shell;
+        this.themeManager = themeManager;
         this.onVaultRenamed = onVaultRenamed;
         this.onVaultDeleted = onVaultDeleted;
         this.bgExecutor = Executors.newSingleThreadExecutor(r -> {
@@ -168,59 +202,21 @@ public final class VaultView extends BorderPane implements AutoCloseable {
             return t;
         });
 
-        getStyleClass().add("app-surface");
         buildUi();
+        themeManager.addListener(themeListener);
         refreshAll();
     }
 
-    private void buildUi() {
-        setTop(buildToolbar());
-        setBottom(buildStatusBar());
-
-        VBox leftSidebar = buildSidebar();
-        VBox centerArea = buildCenterArea();
-        buildInspectorPane();
-
-        mainSplit = new SplitPane(leftSidebar, centerArea, inspectorPane);
-        mainSplit.setOrientation(Orientation.HORIZONTAL);
-        mainSplit.setDividerPositions(0.22, 0.74);
-        setCenter(mainSplit);
-    }
-
-    private Node buildToolbar() {
-        Node emblem = SapphireIcons.createSapphireVaultEmblem(28);
-        vaultNameLbl.setText(session.vaultPath().getFileName().toString());
-        vaultNameLbl.getStyleClass().add("heading-md");
-        commitBadge.getStyleClass().add("sapphire-badge");
-
-        Button addFilesBtn = new Button("Dosya Ekle");
-        addFilesBtn.getStyleClass().add("btn-primary");
-        addFilesBtn.setOnAction(e -> handleAddFiles());
-
-        Button addFolderBtn = new Button("Klasör Ekle");
-        addFolderBtn.setOnAction(e -> handleAddDirectory());
-
-        Button newFolderBtn = new Button("Yeni Klasör");
-        newFolderBtn.setOnAction(e -> handleCreateFolder());
-
-        Button exportBtn = new Button("Dışa Aktar");
-        exportBtn.setOnAction(e -> handleExportSelected());
-
-        Button compactBtn = new Button("Sıkıştır");
-        compactBtn.setOnAction(e -> handleCompact());
-
-        ToggleButton previewToggle = new ToggleButton("Önizleme");
-        previewToggle.setSelected(true);
-        previewToggle.setOnAction(e -> toggleInspector(previewToggle.isSelected()));
-
-        Button securityBtn = new Button("Güvenlik");
-        securityBtn.setOnAction(e -> VaultDialogs.showSecurityDialog(
+    public void openSecurityDrawer() {
+        VaultDrawers.showSecurityDrawer(
+                shell,
                 window(),
+                themeManager,
                 session,
                 bgExecutor,
                 this::refreshMetadataOnly,
                 newPath -> {
-                    vaultNameLbl.setText(newPath.getFileName().toString());
+                    shell.setTitleText("Sapphirypt — " + newPath.getFileName());
                     if (onVaultRenamed != null) {
                         onVaultRenamed.accept(newPath);
                     }
@@ -230,22 +226,84 @@ public final class VaultView extends BorderPane implements AutoCloseable {
                     if (onVaultDeleted != null) {
                         onVaultDeleted.run();
                     }
-                }));
+                });
+    }
 
-        Button settingsBtn = new Button("Ayarlar");
-        settingsBtn.setOnAction(e -> VaultDialogs.showSettingsDialog(window(), settings, session, autoLockMonitor, this::refreshBadges));
+    public void refreshBadges() {
+        String lockDesc = settings.autoLockMinutes() == 0
+                ? "Otomatik Kilit: Kapalı"
+                : "Kilit: " + settings.autoLockMinutes() + " dk";
+        statusEnvLbl.setText(session.cpuProfile().displayName() + " • " + lockDesc);
+    }
 
-        Button lockBtn = new Button("Kilitle");
-        lockBtn.getStyleClass().add("btn-danger");
-        lockBtn.setGraphic(SapphireIcons.lock(14, "#FCA5A5"));
-        lockBtn.setOnAction(e -> onLockRequested.run());
+    private void buildUi() {
+        BorderPane rootLayout = new BorderPane();
+        rootLayout.setTop(buildActionToolbar());
+        rootLayout.setBottom(buildIntegratedStatusBar());
+
+        VBox leftSidebar = buildSidebar();
+        VBox centerArea = buildCenterArea();
+        buildInspectorPane();
+
+        mainSplit = new SplitPane(leftSidebar, centerArea, inspectorPane);
+        mainSplit.setOrientation(Orientation.HORIZONTAL);
+        mainSplit.setDividerPositions(0.21, 0.74);
+        rootLayout.setCenter(mainSplit);
+
+        buildFloatingProgressPill();
+        StackPane.setAlignment(floatingProgressPill, Pos.BOTTOM_RIGHT);
+        StackPane.setMargin(floatingProgressPill, new Insets(0, 18, 42, 18));
+
+        getChildren().addAll(rootLayout, floatingProgressPill);
+    }
+
+    private Node buildActionToolbar() {
+        MenuItem addFilesItem = new MenuItem("Dosya Ekle...");
+        addFilesItem.setOnAction(e -> handleAddFiles());
+        MenuItem addFolderItem = new MenuItem("Klasör Ekle...");
+        addFolderItem.setOnAction(e -> handleAddDirectory());
+        MenuItem newFolderItem = new MenuItem("Yeni Klasör");
+        newFolderItem.setOnAction(e -> handleCreateFolder());
+
+        MenuButton addMenuBtn = new MenuButton("Ekle", SapphireIcons.plus(14, "#FFFFFF"), addFilesItem, addFolderItem, new SeparatorMenuItem(), newFolderItem);
+        addMenuBtn.getStyleClass().add("btn-primary");
+        MotionFx.attachPressSpring(addMenuBtn);
+
+        MotionFx.attachPressSpring(exportBtn);
+        exportBtn.setOnAction(e -> handleExportSelected());
+
+        searchField.setPromptText("Kasada ara...");
+        searchField.setPrefWidth(220);
+        searchField.textProperty().addListener((o, a, b) -> refreshTableOnly());
+
+        globalSearchCheck.selectedProperty().addListener((o, a, b) -> refreshTableOnly());
+
+        extFilterCombo.getItems().add("Tüm Türler");
+        extFilterCombo.setValue("Tüm Türler");
+        extFilterCombo.valueProperty().addListener((o, a, b) -> refreshTableOnly());
+
+        listModeBtn.getStyleClass().addAll("segmented-btn", "segmented-btn-active");
+        listModeBtn.setTooltip(new Tooltip("Liste Görünümü"));
+        listModeBtn.setOnAction(e -> setViewMode(ViewMode.LIST));
+
+        gridModeBtn.getStyleClass().add("segmented-btn");
+        gridModeBtn.setTooltip(new Tooltip("Kart / Izgara Görünümü"));
+        gridModeBtn.setOnAction(e -> setViewMode(ViewMode.GRID));
+
+        HBox viewSwitch = new HBox(2, listModeBtn, gridModeBtn);
+        viewSwitch.getStyleClass().add("segmented-bar");
+        viewSwitch.setAlignment(Pos.CENTER);
+
+        previewToggle.setSelected(true);
+        previewToggle.setOnAction(e -> toggleInspector(previewToggle.isSelected()));
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
-        HBox bar = new HBox(8, emblem, vaultNameLbl, commitBadge, new Separator(Orientation.VERTICAL), addFilesBtn, addFolderBtn, newFolderBtn, exportBtn, compactBtn, spacer, previewToggle, securityBtn, settingsBtn, lockBtn);
+        HBox bar = new HBox(10, addMenuBtn, exportBtn, new Separator(Orientation.VERTICAL), searchField, globalSearchCheck, extFilterCombo, spacer, viewSwitch, previewToggle);
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.getStyleClass().add("toolbar-bar");
+        updateToolbarIcons();
         return bar;
     }
 
@@ -264,7 +322,7 @@ public final class VaultView extends BorderPane implements AutoCloseable {
                         setGraphic(null);
                     } else {
                         setText(item.name());
-                        setGraphic(SapphireIcons.folder(15, "#60A5FA"));
+                        setGraphic(SapphireIcons.folder(15, shell.accentIconColor()));
                     }
                 }
             };
@@ -304,30 +362,82 @@ public final class VaultView extends BorderPane implements AutoCloseable {
         });
         VBox.setVgrow(folderTree, Priority.ALWAYS);
 
-        Label statsHeader = new Label("DEPOLAMA ÖZETİ");
+        // Compact visual storage card
+        Label statsHeader = new Label("DEPOLAMA");
         statsHeader.getStyleClass().add("section-title");
+        storageHeaderSummary.getStyleClass().add("primary-text");
+        storageHeaderSummary.setStyle("-fx-font-weight: bold; -fx-font-size: 12px;");
+        Region stSp = new Region();
+        HBox.setHgrow(stSp, Priority.ALWAYS);
+        HBox storageHeadRow = new HBox(6, statsHeader, stSp, storageHeaderSummary);
+        storageHeadRow.setAlignment(Pos.CENTER_LEFT);
 
-        VBox statsCard = new VBox(5, statRow("Mantıksal Boyut:", logicalSizeVal), statRow("Kasa Dosyası (Fiziksel):", physicalSizeVal), statRow("Aktif Şifreli Veri:", activeBytesVal), statRow("Boşta (Orphan) Veri:", orphanBytesVal), statRow("Tahmini Kazanç:", reclaimableVal), statRow("Blok Paylaşımı:", blockSharingVal));
-        statsCard.getStyleClass().add("panel-card");
-        statsCard.setPadding(new Insets(10));
+        storageActiveBar.getStyleClass().add("storage-bar-active");
+        storageActiveBar.setMinHeight(7);
+        storageActiveBar.setPrefHeight(7);
+        storageOrphanBar.getStyleClass().add("storage-bar-orphan");
+        storageOrphanBar.setMinHeight(7);
+        storageOrphanBar.setPrefHeight(7);
 
-        Button quickCompactBtn = new Button("Boş Alanı Geri Kazan (Sıkıştır)");
-        quickCompactBtn.setMaxWidth(Double.MAX_VALUE);
-        quickCompactBtn.setOnAction(e -> handleCompact());
+        storageBarTrack.getStyleClass().add("storage-bar-track");
+        storageBarTrack.setMinHeight(7);
+        storageBarTrack.setMaxHeight(7);
+        storageBarTrack.getChildren().setAll(storageActiveBar, storageOrphanBar);
+        storageBarTrack.widthProperty().addListener((o, a, b) -> refreshStorageStats());
 
-        VBox sidebar = new VBox(10, treeHeader, folderTree, statsHeader, statsCard, quickCompactBtn);
+        storageShortLegend.getStyleClass().add("muted-text");
+        storageShortLegend.setStyle("-fx-font-size: 11px;");
+        storageShortLegend.setWrapText(true);
+
+        storageDetailsBox.getChildren().setAll(
+                statRow("Dosya Boyutu:", logicalSizeVal),
+                statRow("Kasa Dosyası:", physicalSizeVal),
+                statRow("Kullanılan Alan:", activeBytesVal),
+                statRow("Boşta Alan:", orphanBytesVal),
+                statRow("Kazanılabilecek Alan:", reclaimableVal));
+        storageDetailsBox.setVisible(false);
+        storageDetailsBox.setManaged(false);
+        storageDetailsBox.setPadding(new Insets(4, 0, 2, 0));
+
+        Button compactBtn = new Button("Sıkıştır");
+        compactBtn.setMaxWidth(Double.MAX_VALUE);
+        HBox.setHgrow(compactBtn, Priority.ALWAYS);
+        MotionFx.attachPressSpring(compactBtn);
+        compactBtn.setOnAction(e -> handleCompact());
+
+        Button detailsToggleBtn = new Button("Detaylar");
+        detailsToggleBtn.getStyleClass().add("btn-ghost");
+        detailsToggleBtn.setOnAction(e -> {
+            boolean show = !storageDetailsBox.isVisible();
+            storageDetailsBox.setVisible(show);
+            storageDetailsBox.setManaged(show);
+            detailsToggleBtn.setText(show ? "Gizle" : "Detaylar");
+            if (show) {
+                MotionFx.playEntrance(storageDetailsBox, -6.0, 0.0, 180.0);
+            }
+        });
+
+        HBox storageBtnRow = new HBox(6, compactBtn, detailsToggleBtn);
+        storageBtnRow.setAlignment(Pos.CENTER_LEFT);
+
+        VBox compactStorageCard = new VBox(8, storageHeadRow, storageBarTrack, storageShortLegend, storageDetailsBox, storageBtnRow);
+        compactStorageCard.getStyleClass().add("panel-card");
+        compactStorageCard.setPadding(new Insets(12));
+
+        VBox sidebar = new VBox(10, treeHeader, folderTree, compactStorageCard);
         sidebar.getStyleClass().add("sidebar-pane");
         sidebar.setPadding(new Insets(12));
         sidebar.setMinWidth(230);
-        sidebar.setPrefWidth(260);
+        sidebar.setPrefWidth(256);
         return sidebar;
     }
 
     private HBox statRow(String label, Label valueLabel) {
         Label k = new Label(label);
         k.getStyleClass().add("muted-text");
-        k.setStyle("-fx-font-size: 11.5px;");
-        valueLabel.setStyle("-fx-font-size: 11.5px; -fx-font-weight: bold; -fx-text-fill: #E2E8F0;");
+        k.setStyle("-fx-font-size: 11px;");
+        valueLabel.getStyleClass().add("primary-text");
+        valueLabel.setStyle("-fx-font-size: 11px; -fx-font-weight: bold;");
         Region sp = new Region();
         HBox.setHgrow(sp, Priority.ALWAYS);
         return new HBox(6, k, sp, valueLabel);
@@ -342,39 +452,34 @@ public final class VaultView extends BorderPane implements AutoCloseable {
         HBox navRow = new HBox(8, upBtn, new Separator(Orientation.VERTICAL), breadcrumbBar);
         navRow.setAlignment(Pos.CENTER_LEFT);
 
-        searchField.setPromptText("Dosya veya klasör adına göre ara...");
-        HBox.setHgrow(searchField, Priority.ALWAYS);
-        searchField.textProperty().addListener((o, a, b) -> refreshTableOnly());
-
-        globalSearchCheck.selectedProperty().addListener((o, a, b) -> refreshTableOnly());
-
-        extFilterCombo.getItems().add("Tüm Türler");
-        extFilterCombo.setValue("Tüm Türler");
-        extFilterCombo.valueProperty().addListener((o, a, b) -> refreshTableOnly());
-
-        HBox filterBar = new HBox(10, searchField, globalSearchCheck, extFilterCombo);
-        filterBar.setAlignment(Pos.CENTER_LEFT);
-
         configureTable();
-        VBox.setVgrow(entryTable, Priority.ALWAYS);
+        configureGrid();
+
+        gridScroll.setVisible(false);
+        gridScroll.setManaged(false);
+        contentSwitchPane.getChildren().setAll(entryTable, gridScroll);
+        VBox.setVgrow(contentSwitchPane, Priority.ALWAYS);
 
         Label dropHint = new Label("İpucu: Masaüstünden dosya veya klasörleri doğrudan bu alana sürükleyip bırakabilirsiniz.");
         dropHint.getStyleClass().add("muted-text");
         dropHint.setStyle("-fx-font-size: 11px;");
 
-        VBox center = new VBox(10, navRow, filterBar, entryTable, dropHint);
+        VBox center = new VBox(10, navRow, contentSwitchPane, dropHint);
         center.setPadding(new Insets(12));
         return center;
     }
 
     private void configureTable() {
         entryTable.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
-        entryTable.setPlaceholder(new Label("Bu klasör boş. Dosya ekleyin veya sürükleyip bırakın."));
+        Label emptyLbl = new Label("Bu klasör boş. Dosya ekleyin veya sürükleyip bırakın.");
+        emptyLbl.getStyleClass().add("muted-text");
+        entryTable.setPlaceholder(emptyLbl);
 
         TableColumn<EntryRow, EntryRow> nameCol = new TableColumn<>("Ad");
         nameCol.setPrefWidth(270);
         nameCol.setCellValueFactory(data -> new ReadOnlyObjectWrapper<>(data.getValue()));
-        nameCol.setComparator(Comparator.comparing((EntryRow r) -> r.entry().isFolder() ? 0 : 1).thenComparing(r -> r.entry().name().toLowerCase(Locale.ROOT)));
+        nameCol.setComparator(Comparator.comparing((EntryRow r) -> r.entry().isFolder() ? 0 : 1)
+                .thenComparing(r -> r.entry().name().toLowerCase(Locale.ROOT)));
         nameCol.setCellFactory(col -> new TableCell<>() {
             @Override
             protected void updateItem(EntryRow row, boolean empty) {
@@ -384,23 +489,24 @@ public final class VaultView extends BorderPane implements AutoCloseable {
                     setGraphic(null);
                 } else {
                     setText(row.entry().name());
-                    setGraphic(row.entry().isFolder() ? SapphireIcons.folder(16, "#60A5FA") : SapphireIcons.file(16, "#94A3B8"));
+                    setGraphic(row.entry().isFolder()
+                            ? SapphireIcons.folder(16, shell.accentIconColor())
+                            : SapphireIcons.file(16, shell.mutedIconColor()));
                 }
             }
         });
 
         TableColumn<EntryRow, String> typeCol = new TableColumn<>("Tür");
-        typeCol.setPrefWidth(95);
+        typeCol.setPrefWidth(90);
         typeCol.setCellValueFactory(data -> {
             VaultEntry e = data.getValue().entry();
             if (e.isFolder()) return new ReadOnlyStringWrapper("Klasör");
-
             String ext = e.extensionLower();
             return new ReadOnlyStringWrapper(ext.isEmpty() ? "Dosya" : ext.toUpperCase(Locale.ROOT));
         });
 
-        TableColumn<EntryRow, Long> sizeCol = new TableColumn<>("Mantıksal Boyut");
-        sizeCol.setPrefWidth(130);
+        TableColumn<EntryRow, Long> sizeCol = new TableColumn<>("Boyut");
+        sizeCol.setPrefWidth(125);
         sizeCol.setCellValueFactory(data -> new ReadOnlyObjectWrapper<>(data.getValue().computedSize()));
         sizeCol.setCellFactory(col -> new TableCell<>() {
             @Override
@@ -421,18 +527,13 @@ public final class VaultView extends BorderPane implements AutoCloseable {
             }
         });
 
-        TableColumn<EntryRow, String> blocksCol = new TableColumn<>("Bloklar");
-        blocksCol.setPrefWidth(80);
-        blocksCol.setCellValueFactory(data -> {
-            VaultEntry e = data.getValue().entry();
-            return new ReadOnlyStringWrapper(e.isFolder() ? "-" : Integer.toString(e.blocks().size()));
+        entryTable.getColumns().setAll(List.of(nameCol, typeCol, sizeCol, modifiedCol));
+
+        entryTable.getSelectionModel().selectedItemProperty().addListener((o, oldRow, newRow) -> {
+            updateInspector(newRow);
+            refreshStatusCounts();
         });
 
-        entryTable.getColumns().setAll(List.of(nameCol, typeCol, sizeCol, modifiedCol, blocksCol));
-
-        entryTable.getSelectionModel().selectedItemProperty().addListener((o, oldRow, newRow) -> updateInspector(newRow));
-
-        // Row factory: double-click open/preview + internal drag/drop
         entryTable.setRowFactory(tv -> {
             TableRow<EntryRow> row = new TableRow<>();
             row.setOnMouseClicked(ev -> {
@@ -474,17 +575,39 @@ public final class VaultView extends BorderPane implements AutoCloseable {
             return row;
         });
 
-        // OS external Drag-and-Drop onto table
-        entryTable.setOnDragOver(ev -> {
+        configureExternalDrop(entryTable);
+        entryTable.setContextMenu(buildContextMenu());
+        attachKeyboardShortcuts(entryTable);
+    }
+
+    private void configureGrid() {
+        gridFlow.setPadding(new Insets(12));
+        gridFlow.setAlignment(Pos.TOP_LEFT);
+        gridScroll.setFitToWidth(true);
+        gridScroll.setContextMenu(buildContextMenu());
+        gridScroll.setOnMouseClicked(ev -> {
+            if (ev.getTarget() == gridFlow || ev.getTarget() == gridScroll) {
+                gridSelectedIds.clear();
+                updateGridSelectionStyles();
+                updateInspector(null);
+                refreshStatusCounts();
+            }
+        });
+        configureExternalDrop(gridScroll);
+        attachKeyboardShortcuts(gridScroll);
+    }
+
+    private void configureExternalDrop(Node dropNode) {
+        dropNode.setOnDragOver(ev -> {
             if (ev.getDragboard().hasFiles()) {
                 ev.acceptTransferModes(TransferMode.COPY);
-                entryTable.getStyleClass().add("drop-target-active");
+                dropNode.getStyleClass().add("drop-target-active");
             }
             ev.consume();
         });
-        entryTable.setOnDragExited(ev -> entryTable.getStyleClass().remove("drop-target-active"));
-        entryTable.setOnDragDropped(ev -> {
-            entryTable.getStyleClass().remove("drop-target-active");
+        dropNode.setOnDragExited(ev -> dropNode.getStyleClass().remove("drop-target-active"));
+        dropNode.setOnDragDropped(ev -> {
+            dropNode.getStyleClass().remove("drop-target-active");
             Dragboard db = ev.getDragboard();
             boolean success = false;
             if (db.hasFiles()) {
@@ -495,20 +618,19 @@ public final class VaultView extends BorderPane implements AutoCloseable {
             ev.setDropCompleted(success);
             ev.consume();
         });
+    }
 
-        entryTable.setContextMenu(buildContextMenu());
-
-        // Keyboard shortcuts
+    private void attachKeyboardShortcuts(Node target) {
         KeyCombination ctrlC = new KeyCodeCombination(KeyCode.C, KeyCombination.SHORTCUT_DOWN);
         KeyCombination ctrlX = new KeyCodeCombination(KeyCode.X, KeyCombination.SHORTCUT_DOWN);
         KeyCombination ctrlV = new KeyCodeCombination(KeyCode.V, KeyCombination.SHORTCUT_DOWN);
-        entryTable.setOnKeyPressed(ev -> {
+        target.setOnKeyPressed(ev -> {
             if (ev.getCode() == KeyCode.F2) {
                 handleRenameSelected();
             } else if (ev.getCode() == KeyCode.DELETE) {
                 handleDeleteSelected();
             } else if (ev.getCode() == KeyCode.ENTER) {
-                EntryRow sel = entryTable.getSelectionModel().getSelectedItem();
+                EntryRow sel = primarySelectedRow();
                 if (sel != null) {
                     openOrPreviewEntry(sel.entry());
                 }
@@ -524,10 +646,171 @@ public final class VaultView extends BorderPane implements AutoCloseable {
         });
     }
 
+    private void setViewMode(ViewMode next) {
+        if (next == viewMode) {
+            return;
+        }
+        viewMode = next;
+        boolean isList = viewMode == ViewMode.LIST;
+        entryTable.setVisible(isList);
+        entryTable.setManaged(isList);
+        gridScroll.setVisible(!isList);
+        gridScroll.setManaged(!isList);
+
+        if (isList) {
+            listModeBtn.getStyleClass().add("segmented-btn-active");
+            gridModeBtn.getStyleClass().remove("segmented-btn-active");
+        } else {
+            gridModeBtn.getStyleClass().add("segmented-btn-active");
+            listModeBtn.getStyleClass().remove("segmented-btn-active");
+            rebuildGridCards();
+        }
+        MotionFx.playEntrance(isList ? entryTable : gridScroll, 8.0, 0.0, 190.0);
+        updateToolbarIcons();
+        refreshStatusCounts();
+    }
+
+    private void rebuildGridCards() {
+        gridFlow.getChildren().clear();
+        if (currentDisplayedRows.isEmpty()) {
+            Label emptyLbl = new Label("Bu klasör boş. Dosya ekleyin veya sürükleyip bırakın.");
+            emptyLbl.getStyleClass().add("muted-text");
+            emptyLbl.setPadding(new Insets(24));
+            gridFlow.getChildren().add(emptyLbl);
+            return;
+        }
+
+        for (EntryRow row : currentDisplayedRows) {
+            VaultEntry e = row.entry();
+            boolean selected = gridSelectedIds.contains(e.id());
+
+            Node icon = e.isFolder()
+                    ? SapphireIcons.folder(38, shell.accentIconColor())
+                    : SapphireIcons.file(38, shell.mutedIconColor());
+
+            Label nameLbl = new Label(e.name());
+            nameLbl.getStyleClass().add("primary-text");
+            nameLbl.setStyle("-fx-font-weight: bold; -fx-font-size: 12px;");
+            nameLbl.setMaxWidth(124);
+            nameLbl.setAlignment(Pos.CENTER);
+
+            String metaText = e.isFolder() ? "Klasör" : FormatUtils.formatBytes(row.computedSize());
+            Label metaLbl = new Label(metaText);
+            metaLbl.getStyleClass().add("muted-text");
+            metaLbl.setStyle("-fx-font-size: 11px;");
+
+            VBox card = new VBox(8, icon, nameLbl, metaLbl);
+            card.setAlignment(Pos.CENTER);
+            card.setPrefSize(148, 128);
+            card.setPadding(new Insets(12));
+            card.setUserData(e.id());
+            card.getStyleClass().add(selected ? "grid-item-card-selected" : "grid-item-card");
+
+            card.setOnMouseClicked(ev -> {
+                gridScroll.requestFocus();
+                if (ev.getButton() == javafx.scene.input.MouseButton.SECONDARY) {
+                    if (!gridSelectedIds.contains(e.id())) {
+                        gridSelectedIds.clear();
+                        gridSelectedIds.add(e.id());
+                        updateGridSelectionStyles();
+                    }
+                    updateInspector(row);
+                    refreshStatusCounts();
+                    return;
+                }
+                if (ev.isControlDown() || ev.isMetaDown()) {
+                    if (gridSelectedIds.contains(e.id())) {
+                        gridSelectedIds.remove(e.id());
+                    } else {
+                        gridSelectedIds.add(e.id());
+                    }
+                } else {
+                    gridSelectedIds.clear();
+                    gridSelectedIds.add(e.id());
+                }
+                updateGridSelectionStyles();
+                updateInspector(primarySelectedRow());
+                refreshStatusCounts();
+
+                if (ev.getClickCount() == 2) {
+                    openOrPreviewEntry(e);
+                }
+                ev.consume();
+            });
+
+            card.setOnDragDetected(ev -> {
+                if (!gridSelectedIds.contains(e.id())) {
+                    gridSelectedIds.clear();
+                    gridSelectedIds.add(e.id());
+                }
+                Dragboard db = card.startDragAndDrop(TransferMode.MOVE);
+                ClipboardContent content = new ClipboardContent();
+                content.put(INTERNAL_ENTRY_IDS, gridSelectedIds.stream().map(UUID::toString).toList());
+                db.setContent(content);
+                ev.consume();
+            });
+
+            if (e.isFolder()) {
+                card.setOnDragOver(ev -> {
+                    if (ev.getDragboard().hasContent(INTERNAL_ENTRY_IDS)) {
+                        ev.acceptTransferModes(TransferMode.MOVE);
+                        card.getStyleClass().add("drop-target-active");
+                        ev.consume();
+                    }
+                });
+                card.setOnDragExited(ev -> card.getStyleClass().remove("drop-target-active"));
+                card.setOnDragDropped(ev -> {
+                    card.getStyleClass().remove("drop-target-active");
+                    if (ev.getDragboard().hasContent(INTERNAL_ENTRY_IDS)) {
+                        @SuppressWarnings("unchecked")
+                        List<String> rawIds = (List<String>) ev.getDragboard().getContent(INTERNAL_ENTRY_IDS);
+                        moveEntriesAsync(rawIds.stream().map(UUID::fromString).toList(), e.id());
+                        ev.setDropCompleted(true);
+                        ev.consume();
+                    }
+                });
+            }
+
+            MotionFx.attachHoverLift(card, -2.5, 1.02);
+            gridFlow.getChildren().add(card);
+        }
+    }
+
+    private void updateGridSelectionStyles() {
+        for (Node node : gridFlow.getChildren()) {
+            if (node.getUserData() instanceof UUID id) {
+                boolean selected = gridSelectedIds.contains(id);
+                node.getStyleClass().removeAll("grid-item-card", "grid-item-card-selected");
+                node.getStyleClass().add(selected ? "grid-item-card-selected" : "grid-item-card");
+            }
+        }
+    }
+
+    private List<EntryRow> currentSelectedRows() {
+        if (viewMode == ViewMode.LIST) {
+            return new ArrayList<>(entryTable.getSelectionModel().getSelectedItems());
+        }
+        List<EntryRow> out = new ArrayList<>();
+        for (EntryRow r : currentDisplayedRows) {
+            if (gridSelectedIds.contains(r.entry().id())) {
+                out.add(r);
+            }
+        }
+        return out;
+    }
+
+    private EntryRow primarySelectedRow() {
+        if (viewMode == ViewMode.LIST) {
+            return entryTable.getSelectionModel().getSelectedItem();
+        }
+        List<EntryRow> sel = currentSelectedRows();
+        return sel.isEmpty() ? null : sel.get(0);
+    }
+
     private ContextMenu buildContextMenu() {
         MenuItem previewItem = new MenuItem("Önizle / Aç");
         previewItem.setOnAction(e -> {
-            EntryRow sel = entryTable.getSelectionModel().getSelectedItem();
+            EntryRow sel = primarySelectedRow();
             if (sel != null) openOrPreviewEntry(sel.entry());
         });
 
@@ -552,9 +835,11 @@ public final class VaultView extends BorderPane implements AutoCloseable {
         MenuItem deleteItem = new MenuItem("Sil (Del)");
         deleteItem.setOnAction(e -> handleDeleteSelected());
 
-        ContextMenu menu = new ContextMenu(previewItem, externalItem, exportItem, new SeparatorMenuItem(), renameItem, copyItem, cutItem, pasteItem, new SeparatorMenuItem(), deleteItem);
+        ContextMenu menu = new ContextMenu(
+                previewItem, externalItem, exportItem, new SeparatorMenuItem(),
+                renameItem, copyItem, cutItem, pasteItem, new SeparatorMenuItem(), deleteItem);
         menu.setOnShowing(e -> {
-            List<EntryRow> sel = entryTable.getSelectionModel().getSelectedItems();
+            List<EntryRow> sel = currentSelectedRows();
             boolean hasSel = !sel.isEmpty();
             boolean singleFile = sel.size() == 1 && sel.get(0).entry().isFile();
             previewItem.setDisable(sel.size() != 1);
@@ -573,7 +858,7 @@ public final class VaultView extends BorderPane implements AutoCloseable {
         inspectorPane.getStyleClass().add("inspector-pane");
         inspectorPane.setPadding(new Insets(12));
         inspectorPane.setMinWidth(250);
-        inspectorPane.setPrefWidth(320);
+        inspectorPane.setPrefWidth(315);
 
         Label header = new Label("ÖNİZLEME VE AYRINTILAR");
         header.getStyleClass().add("section-title");
@@ -585,11 +870,13 @@ public final class VaultView extends BorderPane implements AutoCloseable {
         detailMeta.setWrapText(true);
         detailMeta.setStyle("-fx-font-size: 12px;");
 
-        previewContainer.getStyleClass().add("panel-card");
+        previewContainer.getStyleClass().add("preview-surface");
         previewContainer.setPadding(new Insets(10));
         previewContainer.setMinHeight(220);
         VBox.setVgrow(previewContainer, Priority.ALWAYS);
-        previewContainer.getChildren().add(new Label("Önizleme alanı"));
+        Label placeholder = new Label("Önizleme alanı");
+        placeholder.getStyleClass().add("muted-text");
+        previewContainer.getChildren().setAll(placeholder);
 
         openExternalBtn.setMaxWidth(Double.MAX_VALUE);
         openExternalBtn.setDisable(true);
@@ -604,42 +891,60 @@ public final class VaultView extends BorderPane implements AutoCloseable {
         extNote.setWrapText(true);
         extNote.setStyle("-fx-font-size: 11px;");
 
-        inspectorPane.getChildren().addAll(header, detailName, detailMeta, previewContainer, openExternalBtn, exportSelectedBtn, extNote);
+        inspectorPane.getChildren().addAll(
+                header, detailName, detailMeta, previewContainer, openExternalBtn, exportSelectedBtn, extNote);
     }
 
-    private Node buildStatusBar() {
-        progressBar.setPrefWidth(190);
-        progressBar.setVisible(false);
+    private Node buildIntegratedStatusBar() {
+        statusCountLbl.getStyleClass().add("muted-text");
+        statusCountLbl.setStyle("-fx-font-size: 11.5px;");
 
-        cancelTaskBtn.setVisible(false);
-        cancelTaskBtn.setManaged(false);
-        cancelTaskBtn.getStyleClass().add("btn-danger");
-        cancelTaskBtn.setOnAction(e -> {
-            CancellationToken tok = currentTaskToken.get();
-            if (tok != null) {
-                tok.cancel();
-                statusLabel.setText("İptal ediliyor...");
-            }
-        });
+        statusEnvLbl.getStyleClass().add("muted-text");
+        statusEnvLbl.setStyle("-fx-font-size: 11.5px;");
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
-        cpuBadge.getStyleClass().add("sapphire-badge");
 
-        HBox bar = new HBox(10, progressBar, statusLabel, cancelTaskBtn, spacer, cpuBadge);
+        HBox bar = new HBox(10, statusCountLbl, spacer, statusEnvLbl);
         bar.setAlignment(Pos.CENTER_LEFT);
-        bar.getStyleClass().add("status-bar");
+        bar.getStyleClass().add("integrated-status-bar");
         return bar;
+    }
+
+    private void buildFloatingProgressPill() {
+        pillProgressBar.setPrefWidth(130);
+        pillProgressBar.setPrefHeight(7);
+        pillStatusLbl.getStyleClass().add("primary-text");
+        pillStatusLbl.setStyle("-fx-font-size: 12px; -fx-font-weight: bold;");
+
+        pillCancelBtn.getStyleClass().add("btn-danger");
+        pillCancelBtn.setPadding(new Insets(3, 10, 3, 10));
+        pillCancelBtn.setOnAction(e -> {
+            CancellationToken tok = currentTaskToken.get();
+            if (tok != null) {
+                tok.cancel();
+                pillStatusLbl.setText("İptal ediliyor...");
+            }
+        });
+
+        floatingProgressPill.getChildren().setAll(pillProgressBar, pillStatusLbl, pillCancelBtn);
+        floatingProgressPill.setAlignment(Pos.CENTER_LEFT);
+        floatingProgressPill.getStyleClass().add("floating-progress-pill");
+        floatingProgressPill.setPadding(new Insets(8, 14, 8, 14));
+        floatingProgressPill.setMaxSize(Region.USE_PREF_SIZE, Region.USE_PREF_SIZE);
+        floatingProgressPill.setVisible(false);
+        floatingProgressPill.setManaged(false);
     }
 
     private void toggleInspector(boolean show) {
         if (show == inspectorVisible) return;
 
         inspectorVisible = show;
+        previewToggle.setSelected(show);
         if (show) {
             if (!mainSplit.getItems().contains(inspectorPane)) {
                 mainSplit.getItems().add(inspectorPane);
-                mainSplit.setDividerPositions(0.22, 0.74);
+                mainSplit.setDividerPositions(0.21, 0.74);
             }
         } else {
             mainSplit.getItems().remove(inspectorPane);
@@ -659,7 +964,7 @@ public final class VaultView extends BorderPane implements AutoCloseable {
             refreshStorageStats();
             refreshBadges();
         } catch (Exception e) {
-            VaultDialogs.showError(window(), "Yenileme Hatası", "Kasa görünümü güncellenemedi.", e);
+            shell.showErrorOverlay("Yenileme Hatası", "Kasa görünümü güncellenemedi.", e);
         }
     }
 
@@ -667,9 +972,19 @@ public final class VaultView extends BorderPane implements AutoCloseable {
         refreshAll();
     }
 
-    private void refreshBadges() {
-        commitBadge.setText("Commit #" + session.currentCommitSequence());
-        cpuBadge.setText(session.cpuProfile().displayName() + " • " + session.workerCount() + " worker");
+    private void refreshThemeSensitiveUi() {
+        updateToolbarIcons();
+        folderTree.refresh();
+        entryTable.refresh();
+        if (viewMode == ViewMode.GRID) {
+            rebuildGridCards();
+        }
+    }
+
+    private void updateToolbarIcons() {
+        exportBtn.setGraphic(SapphireIcons.download(14, shell.iconColor()));
+        listModeBtn.setGraphic(SapphireIcons.list(14, viewMode == ViewMode.LIST ? "#FFFFFF" : shell.iconColor()));
+        gridModeBtn.setGraphic(SapphireIcons.grid(14, viewMode == ViewMode.GRID ? "#FFFFFF" : shell.iconColor()));
     }
 
     private void rebuildFolderTree(VaultMetadata meta) {
@@ -715,22 +1030,22 @@ public final class VaultView extends BorderPane implements AutoCloseable {
         try {
             refreshTableAndBreadcrumbs(session.getMetadataSnapshot());
         } catch (Exception e) {
-            VaultDialogs.showError(window(), "Hata", "Klasör listesi okunamadı.", e);
+            shell.showErrorOverlay("Hata", "Klasör listesi okunamadı.", e);
         }
     }
 
     private void refreshTableOnly() {
         try {
             VaultMetadata meta = session.getMetadataSnapshot();
-            populateTable(meta);
+            populateItems(meta);
         } catch (Exception e) {
-            VaultDialogs.showError(window(), "Arama Hatası", "Arama sırasında hata oluştu.", e);
+            shell.showErrorOverlay("Arama Hatası", "Arama sırasında hata oluştu.", e);
         }
     }
 
     private void refreshTableAndBreadcrumbs(VaultMetadata meta) {
         rebuildBreadcrumbs(meta);
-        populateTable(meta);
+        populateItems(meta);
     }
 
     private void rebuildBreadcrumbs(VaultMetadata meta) {
@@ -754,14 +1069,12 @@ public final class VaultView extends BorderPane implements AutoCloseable {
             });
             breadcrumbBar.getChildren().add(btn);
             if (i > 0) {
-                Label sep = new Label("/");
-                sep.getStyleClass().add("muted-text");
-                breadcrumbBar.getChildren().add(sep);
+                breadcrumbBar.getChildren().add(SapphireIcons.chevronRight(13, shell.mutedIconColor()));
             }
         }
     }
 
-    private void populateTable(VaultMetadata meta) {
+    private void populateItems(VaultMetadata meta) {
         String query = searchField.getText();
         String extVal = extFilterCombo.getValue();
         String ext = (extVal == null || "Tüm Türler".equals(extVal)) ? "" : extVal;
@@ -775,21 +1088,50 @@ public final class VaultView extends BorderPane implements AutoCloseable {
             long size = e.isFolder() ? meta.computeFolderLogicalSize(e.id()) : e.logicalSize();
             rows.add(new EntryRow(e, size));
         }
+        currentDisplayedRows = rows;
         entryTable.getItems().setAll(rows);
         if (!entryTable.getSortOrder().isEmpty()) {
             entryTable.sort();
         }
+        gridSelectedIds.retainAll(rows.stream().map(r -> r.entry().id()).toList());
+        if (viewMode == ViewMode.GRID) {
+            rebuildGridCards();
+        }
+        refreshStatusCounts();
+    }
+
+    private void refreshStatusCounts() {
+        int total = currentDisplayedRows.size();
+        int selCount = currentSelectedRows().size();
+        statusCountLbl.setText(selCount > 0 ? total + " öğe (" + selCount + " seçili)" : total + " öğe");
     }
 
     private void refreshStorageStats() {
         try {
             StorageStats st = session.getStorageStats();
+            storageHeaderSummary.setText(FormatUtils.formatBytes(st.physicalFileSize()));
             logicalSizeVal.setText(FormatUtils.formatBytes(st.logicalSize()));
             physicalSizeVal.setText(FormatUtils.formatBytes(st.physicalFileSize()));
             activeBytesVal.setText(FormatUtils.formatBytes(st.activeEncryptedBytes()));
             orphanBytesVal.setText(FormatUtils.formatBytes(st.orphanBytes()));
             reclaimableVal.setText(FormatUtils.formatBytes(st.estimatedReclaimableBytes()));
-            blockSharingVal.setText(st.uniqueBlockCount() + " tekil / " + st.totalBlockRefCount() + " ref");
+            storageShortLegend.setText("Kullanılan: " + FormatUtils.formatBytes(st.activeEncryptedBytes())
+                    + " • Boşta: " + FormatUtils.formatBytes(st.orphanBytes()));
+
+            double trackW = storageBarTrack.getWidth() > 20 ? storageBarTrack.getWidth() : 206.0;
+            long totalAllocated = st.activeEncryptedBytes() + st.orphanBytes();
+            if (totalAllocated <= 0) {
+                MotionFx.animatePrefWidth(storageActiveBar, 0, 260.0);
+                MotionFx.animatePrefWidth(storageOrphanBar, 0, 260.0);
+            } else {
+                double activeW = Math.max(4.0, trackW * ((double) st.activeEncryptedBytes() / totalAllocated));
+                double orphanW = st.orphanBytes() > 0 ? Math.max(4.0, trackW - activeW) : 0.0;
+                if (activeW + orphanW > trackW) {
+                    activeW = Math.max(0.0, trackW - orphanW);
+                }
+                MotionFx.animatePrefWidth(storageActiveBar, activeW, 260.0);
+                MotionFx.animatePrefWidth(storageOrphanBar, orphanW, 260.0);
+            }
         } catch (Exception ignored) {
         }
     }
@@ -811,7 +1153,9 @@ public final class VaultView extends BorderPane implements AutoCloseable {
             lastPreviewedId = null;
             detailName.setText("Öğe seçilmedi");
             detailMeta.setText("Önizleme veya ayrıntı için bir dosya/klasör seçin.");
-            previewContainer.getChildren().setAll(new Label("Önizleme alanı"));
+            Label ph = new Label("Önizleme alanı");
+            ph.getStyleClass().add("muted-text");
+            previewContainer.getChildren().setAll(ph);
             openExternalBtn.setDisable(true);
             exportSelectedBtn.setDisable(true);
             return;
@@ -827,15 +1171,23 @@ public final class VaultView extends BorderPane implements AutoCloseable {
         }
 
         detailName.setText(e.name());
-        detailMeta.setText(String.format("Yol: %s\nTür: %s | Boyut: %s\nBlok Sayısı: %s\nOluşturma: %s\nDeğiştirilme: %s",
-                pathStr, e.isFolder() ? "Klasör" : "Dosya", FormatUtils.formatBytes(row.computedSize()),
-                e.isFolder() ? "-" : Integer.toString(e.blocks().size()), FormatUtils.formatTimestamp(e.createdAt()), FormatUtils.formatTimestamp(e.modifiedAt())));
+        detailMeta.setText(String.format(
+                "Yol: %s\nTür: %s | Boyut: %s\nOluşturma: %s\nDeğiştirilme: %s",
+                pathStr,
+                e.isFolder() ? "Klasör" : "Dosya",
+                FormatUtils.formatBytes(row.computedSize()),
+                FormatUtils.formatTimestamp(e.createdAt()),
+                FormatUtils.formatTimestamp(e.modifiedAt())));
 
         if (e.isFolder()) {
             lastPreviewedId = null;
-            VBox box = new VBox(8, SapphireIcons.folder(42, "#60A5FA"), new Label("Klasör içeriğini açmak için çift tıklayın."));
+            Label openHint = new Label("Klasör içeriğini açmak için çift tıklayın.");
+            openHint.getStyleClass().add("muted-text");
+            openHint.setWrapText(true);
+            VBox box = new VBox(8, SapphireIcons.folder(42, shell.accentIconColor()), openHint);
             box.setAlignment(Pos.CENTER);
             previewContainer.getChildren().setAll(box);
+            MotionFx.playEntrance(box, 6.0, 0.0, 180.0);
             return;
         }
 
@@ -850,12 +1202,15 @@ public final class VaultView extends BorderPane implements AutoCloseable {
             lbl.setWrapText(true);
             lbl.getStyleClass().add("muted-text");
             previewContainer.getChildren().setAll(lbl);
+            MotionFx.playEntrance(lbl, 6.0, 0.0, 180.0);
         }
     }
 
     private void loadTextPreviewAsync(VaultEntry entry) {
         lastPreviewedId = entry.id();
-        previewContainer.getChildren().setAll(new Label("Metin önizlemesi çözülüyor..."));
+        Label loading = new Label("Metin önizlemesi çözülüyor...");
+        loading.getStyleClass().add("muted-text");
+        previewContainer.getChildren().setAll(loading);
         bgExecutor.submit(() -> {
             try {
                 byte[] bytes = session.readFileBytes(entry.id(), MAX_TEXT_PREVIEW_BYTES, CancellationToken.NONE);
@@ -866,11 +1221,15 @@ public final class VaultView extends BorderPane implements AutoCloseable {
                     area.setEditable(false);
                     area.setWrapText(false);
                     previewContainer.getChildren().setAll(area);
+                    MotionFx.playEntrance(area, 6.0, 0.0, 180.0);
                 });
             } catch (Exception ex) {
                 Platform.runLater(() -> {
                     if (!entry.id().equals(lastPreviewedId)) return;
-                    previewContainer.getChildren().setAll(new Label("Önizleme hatası: " + ex.getMessage()));
+                    Label err = new Label("Önizleme hatası: " + ex.getMessage());
+                    err.getStyleClass().add("muted-text");
+                    err.setWrapText(true);
+                    previewContainer.getChildren().setAll(err);
                 });
             }
         });
@@ -878,7 +1237,9 @@ public final class VaultView extends BorderPane implements AutoCloseable {
 
     private void loadImagePreviewAsync(VaultEntry entry) {
         lastPreviewedId = entry.id();
-        previewContainer.getChildren().setAll(new Label("Görsel önizlemesi çözülüyor..."));
+        Label loading = new Label("Görsel önizlemesi çözülüyor...");
+        loading.getStyleClass().add("muted-text");
+        previewContainer.getChildren().setAll(loading);
         bgExecutor.submit(() -> {
             try {
                 byte[] bytes = session.readFileBytes(entry.id(), MAX_IMAGE_PREVIEW_BYTES, CancellationToken.NONE);
@@ -892,13 +1253,17 @@ public final class VaultView extends BorderPane implements AutoCloseable {
                     ScrollPane scroll = new ScrollPane(new StackPane(view));
                     scroll.setFitToWidth(true);
                     scroll.setFitToHeight(true);
-                    scroll.setStyle("-fx-background-color: transparent;");
+                    scroll.getStyleClass().add("transparent-scroll");
                     previewContainer.getChildren().setAll(scroll);
+                    MotionFx.playEntrance(scroll, 6.0, 0.0, 180.0);
                 });
             } catch (Exception ex) {
                 Platform.runLater(() -> {
                     if (!entry.id().equals(lastPreviewedId)) return;
-                    previewContainer.getChildren().setAll(new Label("Görsel yüklenemedi: " + ex.getMessage()));
+                    Label err = new Label("Görsel yüklenemedi: " + ex.getMessage());
+                    err.getStyleClass().add("muted-text");
+                    err.setWrapText(true);
+                    previewContainer.getChildren().setAll(err);
                 });
             }
         });
@@ -911,18 +1276,24 @@ public final class VaultView extends BorderPane implements AutoCloseable {
         } else {
             toggleInspector(true);
             String ext = entry.extensionLower();
-            if (!(TEXT_EXTENSIONS.contains(ext) && entry.logicalSize() <= MAX_TEXT_PREVIEW_BYTES) && !(IMAGE_EXTENSIONS.contains(ext) && entry.logicalSize() <= MAX_IMAGE_PREVIEW_BYTES)) {
+            if (!(TEXT_EXTENSIONS.contains(ext) && entry.logicalSize() <= MAX_TEXT_PREVIEW_BYTES)
+                    && !(IMAGE_EXTENSIONS.contains(ext) && entry.logicalSize() <= MAX_IMAGE_PREVIEW_BYTES)) {
                 handleOpenExternal();
             }
         }
     }
 
     private void handleCreateFolder() {
-        VaultDialogs.showTextInputDialog(
-                window(), "Yeni Klasör", "Bulunduğunuz dizinde yeni klasör oluşturun", "Klasör Adı:", "").ifPresent(name -> runBackgroundTask("Klasör oluşturuluyor...", false, (cancel, progress) -> {
+        shell.showTextInputOverlay(
+                "Yeni Klasör",
+                "Bulunduğunuz dizinde yeni klasör oluşturun.",
+                "Klasör adı",
+                "",
+                "Oluştur",
+                nameOpt -> nameOpt.ifPresent(name -> runBackgroundTask("Klasör oluşturuluyor...", false, (cancel, progress) -> {
                     session.createFolder(currentFolderId, name);
                     return "Klasör oluşturuldu: " + name;
-                }));
+                })));
     }
 
     private void handleAddFiles() {
@@ -984,9 +1355,9 @@ public final class VaultView extends BorderPane implements AutoCloseable {
     }
 
     private void handleExportSelected() {
-        List<EntryRow> selected = new ArrayList<>(entryTable.getSelectionModel().getSelectedItems());
+        List<EntryRow> selected = currentSelectedRows();
         if (selected.isEmpty()) {
-            VaultDialogs.showInfo(window(), "Bilgi", "Seçili öğe yok", "Lütfen dışa aktarmak için en az bir öğe seçin.");
+            shell.showToast(ToastType.INFO, "Seçili Öğe Yok", "Dışa aktarmak için en az bir öğe seçin.");
             return;
         }
         if (selected.size() == 1 && selected.get(0).entry().isFile()) {
@@ -1022,60 +1393,73 @@ public final class VaultView extends BorderPane implements AutoCloseable {
     }
 
     private void handleOpenExternal() {
-        EntryRow sel = entryTable.getSelectionModel().getSelectedItem();
+        EntryRow sel = primarySelectedRow();
         if (sel == null || !sel.entry().isFile()) {
             return;
         }
         VaultEntry entry = sel.entry();
         if (!Desktop.isDesktopSupported() || !Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
-            VaultDialogs.showInfo(window(), "Desteklenmiyor", "Bu platformda varsayılan uygulama başlatma desteklenmiyor.", "Lütfen dosyayı 'Dışa Aktar' ile kaydedip açın.");
+            shell.showToast(ToastType.WARNING, "Desteklenmiyor", "Harici açma desteklenmiyor; 'Dışa Aktar' kullanın.");
             return;
         }
-        runBackgroundTask(entry.name() + " harici uygulama için hazırlanıyor...", true, (cancel, progress) -> {
+        runBackgroundTask(entry.name() + " hazırlanıyor...", true, (cancel, progress) -> {
             Path tempFile = session.tempPreviewManager().createTempFile(entry.name());
             session.exportFile(entry.id(), tempFile, cancel, progress);
             Desktop.getDesktop().open(tempFile.toFile());
-            return entry.name() + " harici uygulamada açıldı (geçici dosya: " + tempFile.getFileName() + ")";
+            return entry.name() + " harici uygulamada açıldı";
         });
     }
 
     private void handleRenameSelected() {
-        EntryRow sel = entryTable.getSelectionModel().getSelectedItem();
+        EntryRow sel = primarySelectedRow();
         if (sel == null) return;
         VaultEntry entry = sel.entry();
-        VaultDialogs.showTextInputDialog(
-                window(), "Yeniden Adlandır", "Yeni ad girin", "Ad:", entry.name()).ifPresent(newName -> {
+        shell.showTextInputOverlay(
+                "Yeniden Adlandır",
+                "Seçili öğe için yeni bir ad girin.",
+                "Yeni ad",
+                entry.name(),
+                "Kaydet",
+                nameOpt -> nameOpt.ifPresent(newName -> {
                     if (!newName.equals(entry.name())) {
                         runBackgroundTask("Yeniden adlandırılıyor...", false, (cancel, progress) -> {
                             session.renameEntry(entry.id(), newName);
                             return "Öğe yeniden adlandırıldı: " + newName;
                         });
                     }
-                });
+                }));
     }
 
     private void handleDeleteSelected() {
-        List<EntryRow> selected = new ArrayList<>(entryTable.getSelectionModel().getSelectedItems());
+        List<EntryRow> selected = currentSelectedRows();
         if (selected.isEmpty()) return;
-        boolean confirmed = VaultDialogs.showConfirm(window(), "Silme Onayı", selected.size() + " öğe kalıcı olarak silinecek", "Kasa içinde geri dönüşüm kutusu yoktur. Referansı kalmayan şifreli bloklar bir sonraki sıkıştırmada temizlenir.");
-        if (!confirmed) return;
-
         List<UUID> ids = selected.stream().map(r -> r.entry().id()).toList();
-        runBackgroundTask("Öğeler siliniyor...", false, (cancel, progress) -> {
-            session.deleteEntries(ids);
-            return ids.size() + " öğe silindi";
-        });
+        shell.showConfirmOverlay(
+                selected.size() + " Öğe Silinsin mi?",
+                "Kasa içinde geri dönüşüm kutusu yoktur. Silinen öğelerin kapladığı boş alan bir sonraki sıkıştırmada temizlenir.",
+                "Sil",
+                true,
+                confirmed -> {
+                    if (!confirmed) return;
+                    runBackgroundTask("Öğeler siliniyor...", false, (cancel, progress) -> {
+                        session.deleteEntries(ids);
+                        return ids.size() + " öğe silindi";
+                    });
+                });
     }
 
     private void handleClipboard(ClipboardMode mode) {
-        List<EntryRow> selected = new ArrayList<>(entryTable.getSelectionModel().getSelectedItems());
+        List<EntryRow> selected = currentSelectedRows();
         if (selected.isEmpty()) return;
         clipboardEntryIds.clear();
         for (EntryRow r : selected) {
             clipboardEntryIds.add(r.entry().id());
         }
         clipboardMode = mode;
-        statusLabel.setText(clipboardEntryIds.size() + " öğe " + (mode == ClipboardMode.COPY ? "kopyalandı (bloklar paylaşılır)" : "taşınmak üzere kesildi"));
+        shell.showToast(
+                ToastType.INFO,
+                mode == ClipboardMode.COPY ? "Panoya Kopyalandı" : "Taşınmak Üzere Kesildi",
+                clipboardEntryIds.size() + " öğe seçildi");
     }
 
     private void handlePaste() {
@@ -1132,13 +1516,18 @@ public final class VaultView extends BorderPane implements AutoCloseable {
     }
 
     private void handleCompact() {
-        boolean ok = VaultDialogs.showConfirm(window(), "Kasayı Sıkıştır (Compaction)", "Orphan bloklar temizlenerek yeni kasa dosyası oluşturulacak", "Bu işlem aktif blokları yeni bir geçici .sapphirypt dosyasına kopyalar, doğrular ve güvenli biçimde değiştirir.");
-        if (!ok) return;
-
-        runBackgroundTask("Kasa sıkıştırılıyor...", true, (cancel, progress) -> {
-            StorageStats after = session.compact(cancel, progress);
-            return "Sıkıştırma tamamlandı • Yeni kasa boyutu: " + FormatUtils.formatBytes(after.physicalFileSize());
-        });
+        shell.showConfirmOverlay(
+                "Kasayı Sıkıştır",
+                "Kullanılmayan boş alan temizlenerek kasa dosyası yeniden düzenlenecek ve boyutu küçültülecek.",
+                "Sıkıştırmayı Başlat",
+                false,
+                ok -> {
+                    if (!ok) return;
+                    runBackgroundTask("Kasa sıkıştırılıyor...", true, (cancel, progress) -> {
+                        StorageStats after = session.compact(cancel, progress);
+                        return "Sıkıştırma tamamlandı • Yeni boyut: " + FormatUtils.formatBytes(after.physicalFileSize());
+                    });
+                });
     }
 
     @FunctionalInterface
@@ -1149,19 +1538,21 @@ public final class VaultView extends BorderPane implements AutoCloseable {
     private void runBackgroundTask(String startMsg, boolean cancellable, BackgroundVaultOp op) {
         CancellationToken token = new CancellationToken();
         currentTaskToken.set(token);
-        progressBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
-        progressBar.setVisible(true);
-        statusLabel.setText(startMsg);
-        cancelTaskBtn.setVisible(cancellable);
-        cancelTaskBtn.setManaged(cancellable);
+        pillProgressBar.setProgress(ProgressBar.INDETERMINATE_PROGRESS);
+        pillStatusLbl.setText(startMsg);
+        pillCancelBtn.setVisible(cancellable);
+        pillCancelBtn.setManaged(cancellable);
+        floatingProgressPill.setManaged(true);
+        floatingProgressPill.setVisible(true);
+        MotionFx.playEntrance(floatingProgressPill, 16.0, 0.0, 200.0);
 
         ProgressListener throttledProgress = ProgressListener.throttled(100L, (done, total, msg) ->
                 Platform.runLater(() -> {
                     if (total > 0) {
-                        progressBar.setProgress(Math.min(1.0, (double) done / (double) total));
+                        pillProgressBar.setProgress(Math.min(1.0, (double) done / (double) total));
                     }
                     if (msg != null && !msg.isBlank()) {
-                        statusLabel.setText(msg);
+                        pillStatusLbl.setText(msg);
                     }
                 }));
 
@@ -1169,31 +1560,49 @@ public final class VaultView extends BorderPane implements AutoCloseable {
             try {
                 String resultMsg = op.execute(token, throttledProgress);
                 Platform.runLater(() -> {
-                    clearTaskUi(resultMsg);
+                    hideProgressPill();
                     refreshAll();
+                    shell.showToast(ToastType.SUCCESS, "İşlem Tamamlandı", resultMsg);
                 });
             } catch (VaultCancelledException cancelled) {
                 Platform.runLater(() -> {
-                    clearTaskUi("İşlem iptal edildi");
+                    hideProgressPill();
                     refreshAll();
+                    shell.showToast(ToastType.WARNING, "İptal Edildi", "Devam eden işlem kullanıcı tarafından durduruldu.");
                 });
             } catch (Exception ex) {
                 Platform.runLater(() -> {
-                    clearTaskUi("İşlem başarısız oldu");
+                    hideProgressPill();
                     refreshAll();
-                    VaultDialogs.showError(window(), "İşlem Hatası", ex.getMessage(), ex);
+                    shell.showErrorOverlay("İşlem Hatası", ex.getMessage(), ex);
                 });
             }
         });
     }
 
-    private void clearTaskUi(String statusText) {
+    private void hideProgressPill() {
         currentTaskToken.set(null);
-        progressBar.setVisible(false);
-        progressBar.setProgress(0);
-        cancelTaskBtn.setVisible(false);
-        cancelTaskBtn.setManaged(false);
-        statusLabel.setText(statusText);
+        pillProgressBar.setProgress(0);
+        if (!floatingProgressPill.isVisible()) {
+            floatingProgressPill.setManaged(false);
+            return;
+        }
+        FadeTransition fade = new FadeTransition(Duration.millis(160), floatingProgressPill);
+        fade.setToValue(0.0);
+        fade.setInterpolator(MotionFx.EASE_OUT_EXPO);
+        TranslateTransition slide = new TranslateTransition(Duration.millis(160), floatingProgressPill);
+        slide.setToY(16.0);
+        slide.setInterpolator(MotionFx.EASE_OUT_EXPO);
+        ParallelTransition exit = new ParallelTransition(fade, slide);
+        exit.setOnFinished(ev -> {
+            floatingProgressPill.setOpacity(1.0);
+            floatingProgressPill.setTranslateY(0.0);
+            if (currentTaskToken.get() == null) {
+                floatingProgressPill.setVisible(false);
+                floatingProgressPill.setManaged(false);
+            }
+        });
+        exit.play();
     }
 
     private ConflictResolution askConflictOnFxThread(
@@ -1202,7 +1611,14 @@ public final class VaultView extends BorderPane implements AutoCloseable {
         CompletableFuture<ConflictResolution> fut = new CompletableFuture<>();
         Platform.runLater(() -> {
             try {
-                fut.complete(VaultDialogs.showConflictDialog(window(), conflictingName, existingIsFolder, allowOverwrite));
+                shell.showConflictOverlay(conflictingName, existingIsFolder, allowOverwrite)
+                        .whenComplete((res, err) -> {
+                            if (err != null) {
+                                fut.completeExceptionally(err);
+                            } else {
+                                fut.complete(res);
+                            }
+                        });
             } catch (Throwable t) {
                 fut.completeExceptionally(t);
             }
@@ -1216,6 +1632,7 @@ public final class VaultView extends BorderPane implements AutoCloseable {
 
     @Override
     public void close() {
+        themeManager.removeListener(themeListener);
         CancellationToken tok = currentTaskToken.getAndSet(null);
         if (tok != null) {
             tok.cancel();

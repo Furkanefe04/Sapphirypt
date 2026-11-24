@@ -7,26 +7,28 @@ import com.sapphircrypt.sapphirypt.storage.VaultSession.VaultCreationResult;
 import com.sapphircrypt.sapphirypt.ui.AutoLockMonitor;
 import com.sapphircrypt.sapphirypt.ui.SapphireIcons;
 import com.sapphircrypt.sapphirypt.ui.SplashScreen;
-import com.sapphircrypt.sapphirypt.ui.VaultDialogs;
-import com.sapphircrypt.sapphirypt.ui.VaultDialogs.CreateVaultRequest;
-import com.sapphircrypt.sapphirypt.ui.VaultDialogs.DeleteVaultRequest;
-import com.sapphircrypt.sapphirypt.ui.VaultDialogs.OpenVaultRequest;
-import com.sapphircrypt.sapphirypt.ui.VaultDialogs.RenameVaultRequest;
+import com.sapphircrypt.sapphirypt.ui.ThemeManager;
+import com.sapphircrypt.sapphirypt.ui.UiShell;
+import com.sapphircrypt.sapphirypt.ui.UiShell.ToastType;
+import com.sapphircrypt.sapphirypt.ui.VaultDrawers;
 import com.sapphircrypt.sapphirypt.ui.VaultView;
 import com.sapphircrypt.sapphirypt.ui.WelcomeView;
 import javafx.animation.FadeTransition;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
+import javafx.scene.control.Button;
+import javafx.scene.paint.Color;
 import javafx.stage.Stage;
+import javafx.stage.StageStyle;
 import javafx.util.Duration;
 import org.bouncycastle.crypto.generators.Argon2BytesGenerator;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
+import java.time.LocalTime;
 import java.util.List;
-import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -45,8 +47,10 @@ public final class SapphiryptApplication extends Application {
     });
 
     private AppSettings settings;
+    private ThemeManager themeManager;
     private Stage primaryStage;
     private Scene scene;
+    private UiShell uiShell;
     private SplashScreen splashScreen;
     private WelcomeView welcomeView;
     private VaultView activeVaultView;
@@ -58,27 +62,30 @@ public final class SapphiryptApplication extends Application {
     @Override
     public void start(Stage stage) {
         this.primaryStage = stage;
+        stage.initStyle(StageStyle.TRANSPARENT);
         var appIcons = SapphireIcons.getApplicationIcons();
         if (!appIcons.isEmpty()) {
             stage.getIcons().setAll(appIcons);
         }
 
-        this.splashScreen = new SplashScreen();
+        AppSettings preloadedSettings = loadSettingsSafely();
+        boolean initialDark = preloadedSettings.themeMode().isDarkAt(LocalTime.now());
+        this.splashScreen = new SplashScreen(initialDark);
         this.splashScreen.show();
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             if (activeSession != null) activeSession.close();
         }, "sapphirypt-shutdown"));
 
-        Thread startupThread = new Thread(() -> runStartupSequence(stage), "sapphirypt-startup");
+        Thread startupThread = new Thread(() -> runStartupSequence(stage, preloadedSettings), "sapphirypt-startup");
         startupThread.setDaemon(true);
         startupThread.start();
     }
 
-    private void runStartupSequence(Stage stage) {
+    private void runStartupSequence(Stage stage, AppSettings loadedSettings) {
         long startedAtNanos = System.nanoTime();
         try {
-            updateSplashProgress(0.25, "Güvenlik bileşenleri hazırlanıyor...");
+            updateSplashProgress(0.28);
             TempPreviewManager.sweepOrphanTempFiles();
             new SecureRandom().nextInt();
             Argon2BytesGenerator.class.getName();
@@ -86,13 +93,7 @@ public final class SapphiryptApplication extends Application {
                 return;
             }
 
-            updateSplashProgress(0.55, "Uygulama ayarları yükleniyor...");
-            AppSettings loadedSettings = loadSettingsSafely();
-            if (shuttingDown) {
-                return;
-            }
-
-            updateSplashProgress(0.85, "Arayüz hazırlanıyor...");
+            updateSplashProgress(0.62);
             CompletableFuture<Void> uiReady = new CompletableFuture<>();
             Platform.runLater(() -> {
                 try {
@@ -109,7 +110,7 @@ public final class SapphiryptApplication extends Application {
                 return;
             }
 
-            updateSplashProgress(1.0, "Hazır");
+            updateSplashProgress(1.0);
             long elapsedMs = (System.nanoTime() - startedAtNanos) / 1_000_000L;
             long remainingMs = MIN_SPLASH_DURATION_MS - elapsedMs;
             if (remainingMs > 0) {
@@ -151,15 +152,17 @@ public final class SapphiryptApplication extends Application {
                 if (!stage.isShowing()) {
                     stage.show();
                 }
-                VaultDialogs.showError(stage, "Başlatma Hatası", "Uygulama başlatılırken bir hata oluştu.", ex);
+                if (uiShell != null) {
+                    uiShell.showErrorOverlay("Başlatma Hatası", "Uygulama başlatılırken bir hata oluştu.", ex);
+                }
             });
         }
     }
 
-    private void updateSplashProgress(double targetProgress, String message) {
+    private void updateSplashProgress(double targetProgress) {
         SplashScreen activeSplash = splashScreen;
         if (activeSplash != null && !shuttingDown) {
-            activeSplash.updateProgress(targetProgress, message);
+            activeSplash.updateProgress(targetProgress);
         }
     }
 
@@ -173,15 +176,21 @@ public final class SapphiryptApplication extends Application {
 
     private void initializePrimaryUi(Stage stage, AppSettings loadedSettings) {
         this.settings = loadedSettings;
-        welcomeView = new WelcomeView(
+        this.themeManager = new ThemeManager(loadedSettings);
+        this.uiShell = new UiShell(stage, themeManager, this::handleOpenSettings);
+        this.welcomeView = new WelcomeView(
                 settings,
+                themeManager,
                 this::handleCreateVault,
                 this::handleOpenVault,
                 this::handleRenameClosedVault,
-                this::handleDeleteClosedVault,
-                this::handleOpenWelcomeSettings);
+                this::handleDeleteClosedVault);
 
-        scene = new Scene(welcomeView, 1180, 760);
+        uiShell.setTitleText("Sapphirypt");
+        uiShell.setContent(welcomeView);
+
+        scene = new Scene(uiShell, 1200, 770);
+        scene.setFill(Color.TRANSPARENT);
         var cssUrl = SapphiryptApplication.class.getResource(CSS_PATH);
         if (cssUrl != null) {
             scene.getStylesheets().add(cssUrl.toExternalForm());
@@ -189,9 +198,9 @@ public final class SapphiryptApplication extends Application {
 
         autoLockMonitor = new AutoLockMonitor(scene, settings.autoLockMinutes(), this::lockActiveVault);
 
-        stage.setTitle("Sapphirypt — Şifreli Kasa");
-        stage.setMinWidth(920);
-        stage.setMinHeight(620);
+        stage.setTitle("Sapphirypt");
+        stage.setMinWidth(940);
+        stage.setMinHeight(640);
         stage.setScene(scene);
         stage.setOnCloseRequest(ev -> shutdownCleanly());
     }
@@ -200,15 +209,9 @@ public final class SapphiryptApplication extends Application {
         if (primaryStage == null || scene == null || welcomeView == null) {
             return;
         }
-        welcomeView.setOpacity(0.0);
         primaryStage.show();
+        welcomeView.playEntranceAnimation();
 
-        FadeTransition fadeIn = new FadeTransition(Duration.millis(220), welcomeView);
-        fadeIn.setFromValue(0.0);
-        fadeIn.setToValue(1.0);
-        fadeIn.play();
-
-        // Support opening a .sapphirypt file passed as CLI argument (double-click association)
         List<String> rawArgs = getParameters().getRaw();
         if (!rawArgs.isEmpty()) {
             Path argPath = Path.of(rawArgs.get(0));
@@ -217,135 +220,100 @@ public final class SapphiryptApplication extends Application {
     }
 
     private void handleCreateVault() {
-        Optional<CreateVaultRequest> reqOpt = VaultDialogs.showCreateVaultDialog(primaryStage);
-        if (reqOpt.isEmpty()) return;
-
-        CreateVaultRequest req = reqOpt.get();
-        welcomeView.setBusy(true, "Argon2id anahtarı türetiliyor ve kasa oluşturuluyor...");
-
-        authExecutor.submit(() -> {
-            try (req) {
-                VaultCreationResult created = VaultSession.createVault(
-                        req.vaultPath, req.password, req.argon2Params, req.recoveryKeyPath,
-                        settings.cpuProfile(), settings.maxWorkersOverride());
-                Platform.runLater(() -> {
-                    welcomeView.setBusy(false, "");
-                    activateSession(created.session());
-                    VaultDialogs.showInfo(
-                            primaryStage, "Kasa Oluşturuldu", "Yeni kasanız başarıyla oluşturuldu ve kilidi açıldı.",
-                            "Kurtarma anahtarı kaydedildi: " + created.recoveryKeyPath()
-                                    + "\nBu .key dosyasını kasadan ayrı ve güvenli bir yerde saklayın.");
-                });
-            } catch (Exception ex) {
-                Platform.runLater(() -> {
-                    welcomeView.setBusy(false, "");
-                    VaultDialogs.showError(primaryStage, "Kasa Oluşturulamadı", ex.getMessage(), ex);
-                });
-            }
-        });
+        VaultDrawers.showCreateVaultDrawer(uiShell, primaryStage, themeManager, (req, callback) ->
+                authExecutor.submit(() -> {
+                    try (req) {
+                        VaultCreationResult created = VaultSession.createVault(
+                                req.vaultPath, req.password, req.argon2Params, req.recoveryKeyPath,
+                                settings.cpuProfile(), settings.maxWorkersOverride());
+                        Platform.runLater(() -> {
+                            callback.onSuccess();
+                            activateSession(created.session());
+                            uiShell.showToast(
+                                    ToastType.SUCCESS,
+                                    "Kasa Oluşturuldu",
+                                    "Kurtarma anahtarı kaydedildi: " + created.recoveryKeyPath().getFileName());
+                        });
+                    } catch (Exception ex) {
+                        Platform.runLater(() -> callback.onFailure(ex.getMessage()));
+                    }
+                }));
     }
 
     private void handleOpenVault(Path preselectedPath) {
-        Optional<OpenVaultRequest> reqOpt = VaultDialogs.showOpenVaultDialog(primaryStage, preselectedPath);
-        if (reqOpt.isEmpty()) {
-            return;
-        }
-        OpenVaultRequest req = reqOpt.get();
-        welcomeView.setBusy(true, req.usingRecoveryKey
-                ? "Kurtarma anahtarı ile kasa doğrulanıyor..."
-                : "Argon2id ile parola doğrulanıyor ve kasa açılıyor...");
-
-        authExecutor.submit(() -> {
-            try (req) {
-                VaultSession session = req.usingRecoveryKey
-                        ? VaultSession.openWithRecoveryKey(
-                                req.vaultPath, req.recoveryKeyPath, settings.cpuProfile(), settings.maxWorkersOverride())
-                        : VaultSession.openWithPassword(
-                                req.vaultPath, req.password, settings.cpuProfile(), settings.maxWorkersOverride());
-                Platform.runLater(() -> {
-                    welcomeView.setBusy(false, "");
-                    activateSession(session);
-                });
-            } catch (Exception ex) {
-                Platform.runLater(() -> {
-                    welcomeView.setBusy(false, "");
-                    VaultDialogs.showError(primaryStage, "Kasa Açılamadı", ex.getMessage(), ex);
-                });
-            }
-        });
+        VaultDrawers.showOpenVaultDrawer(uiShell, primaryStage, themeManager, preselectedPath, (req, callback) ->
+                authExecutor.submit(() -> {
+                    try (req) {
+                        VaultSession session = req.usingRecoveryKey
+                                ? VaultSession.openWithRecoveryKey(
+                                        req.vaultPath, req.recoveryKeyPath, settings.cpuProfile(), settings.maxWorkersOverride())
+                                : VaultSession.openWithPassword(
+                                        req.vaultPath, req.password, settings.cpuProfile(), settings.maxWorkersOverride());
+                        Platform.runLater(() -> {
+                            callback.onSuccess();
+                            activateSession(session);
+                            uiShell.showToast(ToastType.SUCCESS, "Kasa Açıldı", session.vaultPath().getFileName().toString());
+                        });
+                    } catch (Exception ex) {
+                        Platform.runLater(() -> callback.onFailure(ex.getMessage()));
+                    }
+                }));
     }
 
     private void handleRenameClosedVault(Path preselectedPath) {
-        Optional<RenameVaultRequest> reqOpt = VaultDialogs.showRenameVaultDialog(primaryStage, preselectedPath);
-        if (reqOpt.isEmpty()) {
-            return;
-        }
-        RenameVaultRequest req = reqOpt.get();
-        Path oldPath = req.vaultPath.toAbsolutePath().normalize();
-        welcomeView.setBusy(true, "Parola ve kurtarma anahtarı doğrulanıyor, kasa adı değiştiriliyor...");
-
-        authExecutor.submit(() -> {
-            try (req) {
-                Path newPath = VaultSession.renameVault(req.vaultPath, req.newVaultName, req.password, req.recoveryKeyPath);
-                Platform.runLater(() -> {
-                    welcomeView.setBusy(false, "");
-                    settings.removeRecentVault(oldPath);
-                    settings.addRecentVault(newPath);
-                    settings.save();
-                    welcomeView.refreshRecentVaults();
-                    VaultDialogs.showInfo(
-                            primaryStage,
-                            "Kasa Adı Değiştirildi",
-                            "Kasa başarıyla yeniden adlandırıldı.",
-                            "Yeni konum: " + newPath);
-                });
-            } catch (Exception ex) {
-                Platform.runLater(() -> {
-                    welcomeView.setBusy(false, "");
-                    VaultDialogs.showError(primaryStage, "Kasa Adı Değiştirilemedi", ex.getMessage(), ex);
-                });
-            }
+        VaultDrawers.showRenameClosedVaultDrawer(uiShell, primaryStage, themeManager, preselectedPath, (req, callback) -> {
+            Path oldPath = req.vaultPath.toAbsolutePath().normalize();
+            authExecutor.submit(() -> {
+                try (req) {
+                    Path newPath = VaultSession.renameVault(req.vaultPath, req.newVaultName, req.password, req.recoveryKeyPath);
+                    Platform.runLater(() -> {
+                        callback.onSuccess();
+                        settings.removeRecentVault(oldPath);
+                        settings.addRecentVault(newPath);
+                        settings.save();
+                        welcomeView.refreshRecentVaults();
+                        uiShell.showToast(ToastType.SUCCESS, "Kasa Adı Değiştirildi", newPath.getFileName().toString());
+                    });
+                } catch (Exception ex) {
+                    Platform.runLater(() -> callback.onFailure(ex.getMessage()));
+                }
+            });
         });
     }
 
     private void handleDeleteClosedVault(Path preselectedPath) {
-        Optional<DeleteVaultRequest> reqOpt = VaultDialogs.showDeleteVaultDialog(primaryStage, preselectedPath);
-        if (reqOpt.isEmpty()) {
-            return;
-        }
-        DeleteVaultRequest req = reqOpt.get();
-        Path targetPath = req.vaultPath.toAbsolutePath().normalize();
-        welcomeView.setBusy(true, "Parola ve kurtarma anahtarı doğrulanıyor, kasa siliniyor...");
+        VaultDrawers.showDeleteClosedVaultDrawer(uiShell, primaryStage, themeManager, preselectedPath, (req, callback) -> {
+            Path targetPath = req.vaultPath.toAbsolutePath().normalize();
+            authExecutor.submit(() -> {
+                try (req) {
+                    VaultSession.deleteVault(req.vaultPath, req.password, req.recoveryKeyPath, req.deleteRecoveryKeyFile);
+                    Platform.runLater(() -> {
+                        callback.onSuccess();
+                        settings.removeRecentVault(targetPath);
+                        settings.save();
+                        welcomeView.refreshRecentVaults();
+                        uiShell.showToast(ToastType.WARNING, "Kasa Kalıcı Silindi", targetPath.getFileName().toString());
+                    });
+                } catch (Exception ex) {
+                    Platform.runLater(() -> callback.onFailure(ex.getMessage()));
+                }
+            });
+        });
+    }
 
-        authExecutor.submit(() -> {
-            try (req) {
-                VaultSession.deleteVault(req.vaultPath, req.password, req.recoveryKeyPath, req.deleteRecoveryKeyFile);
-                Platform.runLater(() -> {
-                    welcomeView.setBusy(false, "");
-                    settings.removeRecentVault(targetPath);
-                    settings.save();
-                    welcomeView.refreshRecentVaults();
-                    VaultDialogs.showInfo(
-                            primaryStage,
-                            "Kasa Silindi",
-                            "Kasa kalıcı olarak silindi.",
-                            "Silinen dosya: " + targetPath);
-                });
-            } catch (Exception ex) {
-                Platform.runLater(() -> {
-                    welcomeView.setBusy(false, "");
-                    VaultDialogs.showError(primaryStage, "Kasa Silinemedi", ex.getMessage(), ex);
-                });
+    private void handleOpenSettings() {
+        VaultDrawers.showSettingsDrawer(uiShell, settings, themeManager, activeSession, autoLockMonitor, () -> {
+            if (activeVaultView != null) {
+                activeVaultView.refreshBadges();
+            }
+            if (welcomeView != null) {
+                welcomeView.refreshRecentVaults();
             }
         });
     }
 
-    private void handleOpenWelcomeSettings() {
-        VaultDialogs.showSettingsDialog(primaryStage, settings, null, autoLockMonitor, null);
-    }
-
     private void activateSession(VaultSession session) {
-        lockActiveVault();
+        lockActiveVaultInternal(false);
         activeSession = session;
         activeVaultPath = session.vaultPath();
         settings.addRecentVault(activeVaultPath);
@@ -356,12 +324,32 @@ public final class SapphiryptApplication extends Application {
         activeVaultView = new VaultView(
                 session,
                 settings,
-                autoLockMonitor,
-                this::lockActiveVault,
+                uiShell,
+                themeManager,
                 this::handleActiveVaultRenamed,
                 this::handleActiveVaultDeleted);
-        scene.setRoot(activeVaultView);
-        primaryStage.setTitle("Sapphirypt — " + activeVaultPath.getFileName());
+
+        Button securityBtn = new Button("Güvenlik");
+        securityBtn.getStyleClass().add("btn-ghost");
+        securityBtn.setGraphic(SapphireIcons.shield(14, uiShell.accentIconColor()));
+        securityBtn.setFocusTraversable(false);
+        securityBtn.setOnAction(e -> {
+            if (activeVaultView != null) {
+                activeVaultView.openSecurityDrawer();
+            }
+        });
+
+        Button lockBtn = new Button("Kilitle");
+        lockBtn.getStyleClass().add("btn-danger");
+        lockBtn.setGraphic(SapphireIcons.lock(14, "#F87171"));
+        lockBtn.setFocusTraversable(false);
+        lockBtn.setOnAction(e -> lockActiveVault());
+
+        com.sapphircrypt.sapphirypt.ui.MotionFx.attachPressSpring(securityBtn);
+        com.sapphircrypt.sapphirypt.ui.MotionFx.attachPressSpring(lockBtn);
+        uiShell.setContextActions(securityBtn, lockBtn);
+        uiShell.setContentAnimated(activeVaultView);
+        uiShell.setTitleText("Sapphirypt — " + activeVaultPath.getFileName());
     }
 
     private void handleActiveVaultRenamed(Path newPath) {
@@ -373,7 +361,7 @@ public final class SapphiryptApplication extends Application {
         settings.addRecentVault(newPath);
         settings.save();
         welcomeView.refreshRecentVaults();
-        primaryStage.setTitle("Sapphirypt — " + newPath.getFileName());
+        uiShell.setTitleText("Sapphirypt — " + newPath.getFileName());
     }
 
     private void handleActiveVaultDeleted() {
@@ -389,16 +377,23 @@ public final class SapphiryptApplication extends Application {
         }
         activeSession = null;
         welcomeView.refreshRecentVaults();
-        scene.setRoot(welcomeView);
-        primaryStage.setTitle("Sapphirypt — Şifreli Kasa");
-        VaultDialogs.showInfo(
-                primaryStage,
+        uiShell.closeDrawer(true);
+        uiShell.setContextActions();
+        uiShell.setContentAnimated(welcomeView);
+        welcomeView.playEntranceAnimation();
+        uiShell.setTitleText("Sapphirypt");
+        uiShell.showToast(
+                ToastType.WARNING,
                 "Kasa Silindi",
-                "Açık kasa kalıcı olarak silindi.",
-                deletedPath != null ? "Silinen dosya: " + deletedPath : "");
+                deletedPath != null ? deletedPath.getFileName().toString() : "Açık kasa kalıcı olarak silindi.");
     }
 
     private void lockActiveVault() {
+        lockActiveVaultInternal(true);
+    }
+
+    private void lockActiveVaultInternal(boolean showToast) {
+        boolean wasUnlocked = activeSession != null || activeVaultView != null;
         if (activeVaultView != null) {
             activeVaultView.close();
             activeVaultView = null;
@@ -408,10 +403,18 @@ public final class SapphiryptApplication extends Application {
             activeSession = null;
         }
         activeVaultPath = null;
-        if (scene != null && welcomeView != null && scene.getRoot() != welcomeView) {
-            welcomeView.refreshRecentVaults();
-            scene.setRoot(welcomeView);
-            primaryStage.setTitle("Sapphirypt — Şifreli Kasa");
+        if (uiShell != null && welcomeView != null) {
+            uiShell.closeDrawer(true);
+            uiShell.setContextActions();
+            if (wasUnlocked) {
+                welcomeView.refreshRecentVaults();
+                uiShell.setContentAnimated(welcomeView);
+                welcomeView.playEntranceAnimation();
+                uiShell.setTitleText("Sapphirypt");
+                if (showToast && !shuttingDown) {
+                    uiShell.showToast(ToastType.INFO, "Kasa Kilitlendi", "Oturum anahtarları bellekten temizlendi.");
+                }
+            }
         }
     }
 
@@ -421,10 +424,17 @@ public final class SapphiryptApplication extends Application {
             splashScreen.closeImmediately();
             splashScreen = null;
         }
-        lockActiveVault();
+        lockActiveVaultInternal(false);
+        if (welcomeView != null) {
+            welcomeView.close();
+        }
         if (autoLockMonitor != null) {
             autoLockMonitor.close();
             autoLockMonitor = null;
+        }
+        if (themeManager != null) {
+            themeManager.close();
+            themeManager = null;
         }
         authExecutor.shutdownNow();
     }

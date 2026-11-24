@@ -86,17 +86,18 @@ public final class VaultSession implements AutoCloseable {
     private final Set<CancellationToken> activeTokens = ConcurrentHashMap.newKeySet();
     private final AtomicBoolean closed = new AtomicBoolean(false);
 
-    private FileChannel channel;
+    private volatile FileChannel channel;
     private FileLock fileLock;
-    private KeySlot activePasswordSlot;
+    private volatile KeySlot activePasswordSlot;
     private KeySlot activeRecoverySlot;
-    private VaultMetadata metadata;
+    private volatile VaultMetadata metadata;
     private long lastCommitOffset;
     private byte[] lastCommitHash;
-    private long lastCommitSequence;
+    private volatile long lastCommitSequence;
     private int lastMetadataRecordLength;
+    private volatile StorageStats cachedStorageStats;
 
-    private VaultSession(Path vaultPath, FileChannel channel, FileLock fileLock, VaultHeader header, VaultKeys keys, NonceLeaseManager nonceLeaseManager, KeySlot activePasswordSlot, KeySlot activeRecoverySlot, VaultMetadata metadata, long lastCommitOffset, byte[] lastCommitHash, long lastCommitSequence, int lastMetadataRecordLength, CpuProfile cpuProfile, int maxWorkersOverride) {
+    private VaultSession(Path vaultPath, FileChannel channel, FileLock fileLock, VaultHeader header, VaultKeys keys, NonceLeaseManager nonceLeaseManager, KeySlot activePasswordSlot, KeySlot activeRecoverySlot, VaultMetadata metadata, long lastCommitOffset, byte[] lastCommitHash, long lastCommitSequence, int lastMetadataRecordLength, CpuProfile cpuProfile, int maxWorkersOverride) throws IOException {
         this.vaultPath = vaultPath.toAbsolutePath().normalize();
         this.channel = channel;
         this.fileLock = fileLock;
@@ -113,6 +114,7 @@ public final class VaultSession implements AutoCloseable {
         this.workerPool = new CryptoWorkerPool(cpuProfile, maxWorkersOverride);
         this.blockCache = new BlockCache();
         this.tempPreviewManager = new TempPreviewManager();
+        this.cachedStorageStats = metadata.computeStats(channel.size(), lastMetadataRecordLength);
     }
 
     public static VaultCreationResult createVault(Path vaultPath, char[] password, Argon2Params argon2Params, Path recoveryKeyOutputPath, CpuProfile cpuProfile, int maxWorkersOverride) throws VaultException, IOException {
@@ -446,42 +448,23 @@ public final class VaultSession implements AutoCloseable {
     }
 
     public Argon2Params currentArgon2Params() {
-        stateLock.readLock().lock();
-        try {
-            return activePasswordSlot != null ? activePasswordSlot.argon2Params() : null;
-        } finally {
-            stateLock.readLock().unlock();
-        }
+        KeySlot slot = this.activePasswordSlot;
+        return slot != null ? slot.argon2Params() : null;
     }
 
     public long currentCommitSequence() {
-        stateLock.readLock().lock();
-        try {
-            return lastCommitSequence;
-        } finally {
-            stateLock.readLock().unlock();
-        }
+        return this.lastCommitSequence;
     }
 
     public VaultMetadata getMetadataSnapshot() throws VaultLockedException {
-        stateLock.readLock().lock();
-        try {
-            ensureOpen();
-            return metadata.copyMutable();
-        } finally {
-            stateLock.readLock().unlock();
-        }
+        ensureOpen();
+        VaultMetadata snap = this.metadata;
+        return snap.copyMutable();
     }
 
     public StorageStats getStorageStats() throws VaultLockedException, IOException {
-        stateLock.readLock().lock();
-        try {
-            ensureOpen();
-            long physicalSize = channel.size();
-            return metadata.computeStats(physicalSize, lastMetadataRecordLength);
-        } finally {
-            stateLock.readLock().unlock();
-        }
+        ensureOpen();
+        return this.cachedStorageStats;
     }
 
     public BlockCache.CacheStats getCacheStats() {
@@ -672,6 +655,8 @@ public final class VaultSession implements AutoCloseable {
 
             long initialSize = Files.size(sourceFile);
             FileTime initialMtime = Files.getLastModifiedTime(sourceFile);
+            long estimatedBlocks = (initialSize + VaultConstants.MAX_BLOCK_PLAINTEXT_SIZE - 1L) / VaultConstants.MAX_BLOCK_PLAINTEXT_SIZE;
+            nonceLeaseManager.ensureDataLeaseFor(estimatedBlocks);
             Map<Integer, BlockRef> reusableByIndex = new HashMap<>();
             if (existingFile != null) {
                 for (BlockRef ref : existingFile.blocks()) {
@@ -709,9 +694,11 @@ public final class VaultSession implements AutoCloseable {
                     }
                     totalRead += readInChunk;
 
-                    byte[] plaintextSha = SensitiveBytes.sha256(exactChunk);
                     BlockRef prevRef = reusableByIndex.get(blockIndex);
-                    if (prevRef != null && prevRef.plaintextLength() == readInChunk && SensitiveBytes.constantTimeEquals(prevRef.plaintextSha256(), plaintextSha)) {
+                    byte[] precomputedSha = (prevRef != null && prevRef.plaintextLength() == readInChunk)
+                            ? SensitiveBytes.sha256(exactChunk)
+                            : null;
+                    if (precomputedSha != null && SensitiveBytes.constantTimeEquals(prevRef.plaintextSha256(), precomputedSha)) {
                         SensitiveBytes.wipe(exactChunk);
                         window.addLast(new PendingReusedChunk(blockIndex, readInChunk, prevRef));
                     } else {
@@ -723,11 +710,12 @@ public final class VaultSession implements AutoCloseable {
                         Future<PreparedBlock> future = workerPool.submit(effectiveCancel, buffers -> {
                             try {
                                 effectiveCancel.throwIfCancelled();
+                                byte[] blockSha = precomputedSha != null ? precomputedSha : SensitiveBytes.sha256(exactChunk);
                                 byte[] nonce = AesGcmCipher.buildCounterNonce(header.dataNoncePrefix(), nonceCounter);
                                 byte[] aad = AadBuilder.forDataBlock(header.formatVersion(), header.containerId(), blockId, currentIdx, nonceCounter, ptLen, recordSeq);
                                 int ctLen = AesGcmCipher.encryptInto(keys.dataKey(), nonce, exactChunk, 0, ptLen, aad, buffers.ciphertext, 0);
                                 byte[] framed = RecordFrame.encodeDataBlock(recordSeq, blockId, currentIdx, ptLen, nonceCounter, buffers.ciphertext, 0, ctLen);
-                                return new PreparedBlock(blockId, currentIdx, ptLen, nonceCounter, recordSeq, plaintextSha, framed);
+                                return new PreparedBlock(blockId, currentIdx, ptLen, nonceCounter, recordSeq, blockSha, framed);
                             } finally {
                                 SensitiveBytes.wipe(exactChunk);
                             }
@@ -764,6 +752,7 @@ public final class VaultSession implements AutoCloseable {
             long createdAt = existingFile != null ? existingFile.createdAt() : now;
             VaultEntry fileEntry = new VaultEntry(fileId, targetFolderId, EntryType.FILE, effectiveName, createdAt, now, initialSize, newBlocks);
             working.putEntry(fileEntry);
+            effectiveProgress.onProgress(initialSize, Math.max(1L, initialSize), effectiveName + " diske kaydediliyor...");
             commitMetadataLocked(working);
             effectiveProgress.onProgress(initialSize, Math.max(1L, initialSize), effectiveName + " tamamlandı");
             return fileEntry;
@@ -1333,15 +1322,17 @@ public final class VaultSession implements AutoCloseable {
             } catch (IOException ignored) {
             }
 
-            this.metadata = compactedMeta;
+            long physical = channel.size();
+            StorageStats compactedStats = compactedMeta.computeStats(physical, newMetaLength);
             this.lastCommitOffset = newCommitOffset;
             this.lastCommitHash = newCommitHash;
             this.lastCommitSequence = newCommitSeq;
             this.lastMetadataRecordLength = newMetaLength;
+            this.cachedStorageStats = compactedStats;
+            this.metadata = compactedMeta;
 
-            long physical = channel.size();
             effectiveProgress.onProgress(Math.max(1L, totalUniqueBytes), Math.max(1L, totalUniqueBytes), "Sıkıştırma tamamlandı");
-            return compactedMeta.computeStats(physical, newMetaLength);
+            return compactedStats;
         } finally {
             stateLock.writeLock().unlock();
             activeTokens.remove(effectiveCancel);
@@ -1655,11 +1646,13 @@ public final class VaultSession implements AutoCloseable {
         RecordFrame.writeFully(channel, commitOffset, ByteBuffer.wrap(commitFrame));
         channel.force(true);
 
-        this.metadata = working;
+        StorageStats updatedStats = working.computeStats(channel.size(), metaFrame.length);
         this.lastCommitOffset = commitOffset;
         this.lastCommitHash = commitHash;
         this.lastCommitSequence = commitSeq;
         this.lastMetadataRecordLength = metaFrame.length;
+        this.cachedStorageStats = updatedStats;
+        this.metadata = working;
     }
 
     @Override

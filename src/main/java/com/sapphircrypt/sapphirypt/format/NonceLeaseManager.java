@@ -115,6 +115,18 @@ public final class NonceLeaseManager {
         return dataNext++;
     }
 
+    public synchronized void ensureDataLeaseFor(long requiredBlocks) throws IOException {
+        if (requiredBlocks <= 0L) {
+            return;
+        }
+        long remaining = dataLimit - dataNext;
+        if (remaining < requiredBlocks) {
+            long needed = Math.max(VaultConstants.DATA_NONCE_LEASE, requiredBlocks);
+            dataLimit = safeAdd(dataNext, needed);
+            persistNextGenerationLocked();
+        }
+    }
+
     public synchronized long nextMetadataCounter() throws IOException {
         if (metadataNext >= metadataLimit) {
             metadataLimit = safeAdd(metadataNext, VaultConstants.METADATA_NONCE_LEASE);
