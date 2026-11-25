@@ -68,4 +68,47 @@ class AppSettingsTransferHoldTest {
         assertEquals("GRID", reloaded.defaultViewMode());
         assertTrue(reloaded.defaultGridView());
     }
+
+    @Test
+    void phase1SecurityTrayAndLanguageSettingsDefaultClampAndPersist(@TempDir Path tempDir) {
+        AppSettings fromMissing = AppSettings.loadFrom(tempDir.resolve("missing.properties"));
+        assertTrue(fromMissing.clipboardAutoClearEnabled());
+        assertEquals(30, fromMissing.clipboardClearSeconds());
+        assertFalse(fromMissing.minimizeToTray());
+        assertEquals("tr", fromMissing.language());
+        assertFalse(fromMissing.isEnglish());
+
+        AppSettings custom = new AppSettings();
+        custom.setClipboardAutoClearEnabled(false);
+        custom.setClipboardClearSeconds(5); // clamps to 10
+        assertEquals(10, custom.clipboardClearSeconds());
+        custom.setClipboardClearSeconds(999); // clamps to 300
+        assertEquals(300, custom.clipboardClearSeconds());
+        custom.setClipboardClearSeconds(60);
+        custom.setMinimizeToTray(true);
+        custom.setLanguage("EN");
+        assertEquals("en", custom.language());
+        assertTrue(custom.isEnglish());
+
+        Path target = tempDir.resolve("phase1-settings.properties");
+        custom.saveTo(target);
+
+        AppSettings reloaded = AppSettings.loadFrom(target);
+        assertFalse(reloaded.clipboardAutoClearEnabled());
+        assertEquals(60, reloaded.clipboardClearSeconds());
+        assertTrue(reloaded.minimizeToTray());
+        assertEquals("en", reloaded.language());
+        assertTrue(reloaded.isEnglish());
+
+        reloaded.setLanguage("fr");
+        assertEquals("tr", reloaded.language());
+        assertFalse(reloaded.isEnglish());
+        assertFalse(reloaded.shredSourceAfterImport());
+
+        reloaded.setShredSourceAfterImport(true);
+        Path shredTarget = tempDir.resolve("shred-settings.properties");
+        reloaded.saveTo(shredTarget);
+        AppSettings shredReloaded = AppSettings.loadFrom(shredTarget);
+        assertTrue(shredReloaded.shredSourceAfterImport());
+    }
 }

@@ -89,7 +89,7 @@ public final class VaultDrawers {
 
             eyeBtn.getStyleClass().add("icon-btn");
             eyeBtn.setFocusTraversable(false);
-            eyeBtn.setTooltip(new Tooltip("Parolayı Göster / Gizle"));
+            eyeBtn.setTooltip(new Tooltip(I18n.t("Parolayı Göster / Gizle", "Show / Hide Password")));
             updateEyeIcon();
             eyeBtn.setOnAction(e -> toggleReveal());
 
@@ -164,26 +164,26 @@ public final class VaultDrawers {
             BiConsumer<CreateVaultRequest, DrawerTaskCallback> onSubmit) {
         AtomicBoolean busy = new AtomicBoolean(false);
 
-        Label step1Pill = new Label("1. Konum & .key");
+        Label step1Pill = new Label(I18n.t("1. Konum & .key", "1. Location & .key"));
         step1Pill.getStyleClass().addAll("stepper-pill", "stepper-pill-active");
-        Label step2Pill = new Label("2. Parola & Güvenlik");
+        Label step2Pill = new Label(I18n.t("2. Parola & Güvenlik", "2. Password & Security"));
         step2Pill.getStyleClass().add("stepper-pill");
         HBox stepperBar = new HBox(8, step1Pill, SapphireIcons.chevronRight(14, shell.mutedIconColor()), step2Pill);
         stepperBar.setAlignment(Pos.CENTER_LEFT);
 
         // Step 1 controls
         TextField vaultPathField = new TextField();
-        vaultPathField.setPromptText("Örnek: C:\\Kasalar\\kisisel.sapphirypt");
-        Button browseVaultBtn = new Button("Gözat...");
+        vaultPathField.setPromptText(I18n.t("Örnek: C:\\Kasalar\\kisisel.sapphirypt", "Example: C:\\Vaults\\personal.sapphirypt"));
+        Button browseVaultBtn = new Button(I18n.t("Gözat...", "Browse..."));
         TextField keyPathField = new TextField();
-        keyPathField.setPromptText("Kurtarma anahtarı (.key) yolu");
-        Button browseKeyBtn = new Button("Gözat...");
+        keyPathField.setPromptText(I18n.t("Kurtarma anahtarı (.key) yolu", "Recovery key (.key) path"));
+        Button browseKeyBtn = new Button(I18n.t("Gözat...", "Browse..."));
 
         browseVaultBtn.setOnAction(e -> {
             FileChooser chooser = new FileChooser();
-            chooser.setTitle("Kasa Dosyası Konumu");
+            chooser.setTitle(I18n.t("Kasa Dosyası Konumu", "Vault File Location"));
             chooser.getExtensionFilters().add(vaultExtFilter());
-            chooser.setInitialFileName("Kasa" + VaultConstants.FILE_EXTENSION);
+            chooser.setInitialFileName(I18n.t("Kasa", "Vault") + VaultConstants.FILE_EXTENSION);
             File chosen = chooser.showSaveDialog(owner);
             if (chosen != null) {
                 String pathStr = ensureExtension(chosen.getAbsolutePath(), VaultConstants.FILE_EXTENSION);
@@ -196,35 +196,37 @@ public final class VaultDrawers {
 
         browseKeyBtn.setOnAction(e -> {
             FileChooser chooser = new FileChooser();
-            chooser.setTitle("Kurtarma Anahtarı (.key) Konumu");
+            chooser.setTitle(I18n.t("Kurtarma Anahtarı (.key) Konumu", "Recovery Key (.key) Location"));
             chooser.getExtensionFilters().add(keyExtFilter());
-            chooser.setInitialFileName("kurtarma" + VaultConstants.RECOVERY_KEY_EXTENSION);
+            chooser.setInitialFileName(I18n.t("kurtarma", "recovery") + VaultConstants.RECOVERY_KEY_EXTENSION);
             File chosen = chooser.showSaveDialog(owner);
             if (chosen != null) {
                 keyPathField.setText(ensureExtension(chosen.getAbsolutePath(), VaultConstants.RECOVERY_KEY_EXTENSION));
             }
         });
 
-        Label tipBox = new Label("Kurtarma anahtarı (.key) dosyasını kasa dosyasından farklı bir USB veya yedek klasöre kaydetmeniz önerilir.");
+        Label tipBox = new Label(I18n.t(
+                "Kurtarma anahtarı (.key) dosyasını kasa dosyasından farklı bir USB veya yedek klasöre kaydetmeniz önerilir.",
+                "Store your recovery key (.key) in a separate USB drive or backup folder from your vault file."));
         tipBox.getStyleClass().add("warning-badge");
         tipBox.setWrapText(true);
         tipBox.setMaxWidth(Double.MAX_VALUE);
 
         VBox step1Pane = new VBox(12,
-                fieldLabel("Kasa Dosyası (.sapphirypt)"),
+                fieldLabel(I18n.t("Kasa Dosyası (.sapphirypt)", "Vault File (.sapphirypt)")),
                 pickerRow(vaultPathField, browseVaultBtn),
-                fieldLabel("Kurtarma Anahtarı (.key)"),
+                fieldLabel(I18n.t("Kurtarma Anahtarı (.key)", "Recovery Key (.key)")),
                 pickerRow(keyPathField, browseKeyBtn),
                 tipBox);
 
         // Step 2 controls
-        PasswordInputRow pwInput = new PasswordInputRow("Güçlü bir parola girin", themeManager);
-        PasswordInputRow confirmInput = new PasswordInputRow("Parolayı tekrar girin", themeManager);
+        PasswordInputRow pwInput = new PasswordInputRow(I18n.t("Güçlü bir parola girin", "Enter a strong password"), themeManager);
+        PasswordInputRow confirmInput = new PasswordInputRow(I18n.t("Parolayı tekrar girin", "Confirm password"), themeManager);
 
         ProgressBar strengthBar = new ProgressBar(0.0);
         strengthBar.setMaxWidth(Double.MAX_VALUE);
         strengthBar.setPrefHeight(6);
-        Label strengthLbl = new Label("Parola gücü: -");
+        Label strengthLbl = new Label(I18n.t("Parola gücü: -", "Password strength: -"));
         strengthLbl.getStyleClass().add("muted-text");
         strengthLbl.setStyle("-fx-font-size: 11.5px;");
 
@@ -237,27 +239,27 @@ public final class VaultDrawers {
         configurePresetCombo(kdfCombo);
 
         VBox step2Pane = new VBox(12,
-                fieldLabel("Kasa Parolası"),
+                fieldLabel(I18n.t("Kasa Parolası", "Vault Password")),
                 pwInput,
-                fieldLabel("Parola Tekrar"),
+                fieldLabel(I18n.t("Parola Tekrar", "Confirm Password")),
                 confirmInput,
                 new VBox(5, strengthBar, strengthLbl),
-                fieldLabel("Güvenlik Seviyesi"),
+                fieldLabel(I18n.t("Güvenlik Seviyesi", "Security Level")),
                 kdfCombo);
         step2Pane.setVisible(false);
         step2Pane.setManaged(false);
 
         Label errorBanner = createErrorBanner();
-        HBox busyRow = createBusyRow("Kasa oluşturuluyor...");
+        HBox busyRow = createBusyRow(I18n.t("Kasa oluşturuluyor...", "Creating vault..."));
 
         VBox body = new VBox(16, stepperBar, step1Pane, step2Pane, errorBanner, busyRow);
 
         // Footer controls
-        Button cancelBtn = new Button("İptal");
-        Button backBtn = new Button("← Geri");
+        Button cancelBtn = new Button(I18n.t("İptal", "Cancel"));
+        Button backBtn = new Button(I18n.t("← Geri", "← Back"));
         backBtn.setVisible(false);
         backBtn.setManaged(false);
-        Button primaryBtn = new Button("İleri →");
+        Button primaryBtn = new Button(I18n.t("İleri →", "Next →"));
         primaryBtn.getStyleClass().add("btn-primary");
         MotionFx.attachPressSpring(primaryBtn);
 
@@ -278,7 +280,7 @@ public final class VaultDrawers {
             step2Pill.getStyleClass().remove("stepper-pill-active");
             backBtn.setVisible(false);
             backBtn.setManaged(false);
-            primaryBtn.setText("İleri →");
+            primaryBtn.setText(I18n.t("İleri →", "Next →"));
             MotionFx.playSlideSwitch(step1Pane, -24.0, 220.0);
         };
         Runnable switchToStep2 = () -> {
@@ -286,11 +288,11 @@ public final class VaultDrawers {
             String vPath = vaultPathField.getText().trim();
             String kPath = keyPathField.getText().trim();
             if (vPath.isEmpty()) {
-                showError(errorBanner, "Lütfen bir kasa dosya yolu seçin.");
+                showError(errorBanner, I18n.t("Lütfen bir kasa dosya yolu seçin.", "Please select a vault file path."));
                 return;
             }
             if (kPath.isEmpty()) {
-                showError(errorBanner, "Lütfen kurtarma anahtarı (.key) dosya yolu seçin.");
+                showError(errorBanner, I18n.t("Lütfen kurtarma anahtarı (.key) dosya yolu seçin.", "Please select a recovery key (.key) path."));
                 return;
             }
             onStep2.set(true);
@@ -302,7 +304,7 @@ public final class VaultDrawers {
             step2Pill.getStyleClass().add("stepper-pill-active");
             backBtn.setVisible(true);
             backBtn.setManaged(true);
-            primaryBtn.setText("Kasayı Oluştur");
+            primaryBtn.setText(I18n.t("Kasayı Oluştur", "Create Vault"));
             MotionFx.playSlideSwitch(step2Pane, 24.0, 220.0);
             pwInput.focusField();
         };
@@ -317,13 +319,13 @@ public final class VaultDrawers {
             if (pw.length == 0) {
                 SensitiveBytes.wipe(pw);
                 SensitiveBytes.wipe(cf);
-                showError(errorBanner, "Parola boş bırakılamaz.");
+                showError(errorBanner, I18n.t("Parola boş bırakılamaz.", "Password cannot be empty."));
                 return;
             }
             if (!Arrays.equals(pw, cf)) {
                 SensitiveBytes.wipe(pw);
                 SensitiveBytes.wipe(cf);
-                showError(errorBanner, "Parolalar birbiriyle eşleşmiyor.");
+                showError(errorBanner, I18n.t("Parolalar birbiriyle eşleşmiyor.", "Passwords do not match."));
                 return;
             }
             SensitiveBytes.wipe(cf);
@@ -331,7 +333,7 @@ public final class VaultDrawers {
             Argon2Preset preset = kdfCombo.getValue();
             if (preset == null || !preset.available()) {
                 SensitiveBytes.wipe(pw);
-                showError(errorBanner, "Seçilen güvenlik seviyesi bu cihazda kullanılamıyor.");
+                showError(errorBanner, I18n.t("Seçilen güvenlik seviyesi bu cihazda kullanılamıyor.", "Selected security level is unavailable on this device."));
                 return;
             }
 
@@ -371,8 +373,8 @@ public final class VaultDrawers {
         });
 
         shell.openDrawer(
-                "Yeni Kasa Oluştur",
-                "Şifreli .sapphirypt kasası ve .key kurtarma anahtarı tanımlayın",
+                I18n.t("Yeni Kasa Oluştur", "Create New Vault"),
+                I18n.t("Şifreli .sapphirypt kasası ve .key kurtarma anahtarı tanımlayın", "Set up an encrypted .sapphirypt vault and .key recovery file"),
                 body,
                 footer,
                 () -> !busy.get(),
@@ -394,11 +396,11 @@ public final class VaultDrawers {
         AtomicBoolean useRecoveryKey = new AtomicBoolean(false);
 
         TextField vaultPathField = new TextField(preselectedVault == null ? "" : preselectedVault.toString());
-        vaultPathField.setPromptText("Açılacak .sapphirypt kasa dosyası");
-        Button browseVaultBtn = new Button("Gözat...");
+        vaultPathField.setPromptText(I18n.t("Açılacak .sapphirypt kasa dosyası", "Vault file (.sapphirypt) to open"));
+        Button browseVaultBtn = new Button(I18n.t("Gözat...", "Browse..."));
         browseVaultBtn.setOnAction(e -> {
             FileChooser chooser = new FileChooser();
-            chooser.setTitle("Kasa Dosyası Seç");
+            chooser.setTitle(I18n.t("Kasa Dosyası Seç", "Select Vault File"));
             chooser.getExtensionFilters().add(vaultExtFilter());
             File f = chooser.showOpenDialog(owner);
             if (f != null) {
@@ -406,10 +408,10 @@ public final class VaultDrawers {
             }
         });
 
-        Button passwordModeBtn = new Button("Parola ile");
+        Button passwordModeBtn = new Button(I18n.t("Parola ile", "With Password"));
         passwordModeBtn.getStyleClass().add("segmented-btn");
         passwordModeBtn.setMaxWidth(Double.MAX_VALUE);
-        Button keyModeBtn = new Button("Kurtarma Anahtarı (.key)");
+        Button keyModeBtn = new Button(I18n.t("Kurtarma Anahtarı (.key)", "Recovery Key (.key)"));
         keyModeBtn.getStyleClass().add("segmented-btn");
         keyModeBtn.setMaxWidth(Double.MAX_VALUE);
         HBox.setHgrow(passwordModeBtn, Priority.ALWAYS);
@@ -418,30 +420,30 @@ public final class VaultDrawers {
         MotionFx.SegmentedSwitch modeSwitch = new MotionFx.SegmentedSwitch(4, passwordModeBtn, keyModeBtn);
         modeSwitch.setActive(passwordModeBtn, false);
 
-        PasswordInputRow pwInput = new PasswordInputRow("Kasa parolasını girin", themeManager);
-        VBox pwSection = new VBox(8, fieldLabel("Kasa Parolası"), pwInput);
+        PasswordInputRow pwInput = new PasswordInputRow(I18n.t("Kasa parolasını girin", "Enter vault password"), themeManager);
+        VBox pwSection = new VBox(8, fieldLabel(I18n.t("Kasa Parolası", "Vault Password")), pwInput);
 
         TextField keyPathField = new TextField();
-        keyPathField.setPromptText(".key kurtarma dosyasını seçin");
-        Button browseKeyBtn = new Button("Gözat...");
+        keyPathField.setPromptText(I18n.t(".key kurtarma dosyasını seçin", "Select .key recovery file"));
+        Button browseKeyBtn = new Button(I18n.t("Gözat...", "Browse..."));
         browseKeyBtn.setOnAction(e -> {
             FileChooser chooser = new FileChooser();
-            chooser.setTitle("Kurtarma Anahtarı (.key) Seç");
+            chooser.setTitle(I18n.t("Kurtarma Anahtarı (.key) Seç", "Select Recovery Key (.key)"));
             chooser.getExtensionFilters().add(keyExtFilter());
             File f = chooser.showOpenDialog(owner);
             if (f != null) {
                 keyPathField.setText(f.getAbsolutePath());
             }
         });
-        VBox keySection = new VBox(8, fieldLabel("Kurtarma Anahtarı (.key)"), pickerRow(keyPathField, browseKeyBtn));
+        VBox keySection = new VBox(8, fieldLabel(I18n.t("Kurtarma Anahtarı (.key)", "Recovery Key (.key)")), pickerRow(keyPathField, browseKeyBtn));
         keySection.setVisible(false);
         keySection.setManaged(false);
 
         Label errorBanner = createErrorBanner();
-        HBox busyRow = createBusyRow("Kasa anahtarı doğrulanıyor ve açılıyor...");
+        HBox busyRow = createBusyRow(I18n.t("Kasa doğrulanıyor ve açılıyor...", "Verifying and opening vault..."));
 
         VBox body = new VBox(16,
-                fieldLabel("Kasa Dosyası (.sapphirypt)"),
+                fieldLabel(I18n.t("Kasa Dosyası (.sapphirypt)", "Vault File (.sapphirypt)")),
                 pickerRow(vaultPathField, browseVaultBtn),
                 modeSwitch,
                 pwSection,
@@ -475,8 +477,8 @@ public final class VaultDrawers {
             }
         });
 
-        Button cancelBtn = new Button("İptal");
-        Button unlockBtn = new Button("Kilidi Aç");
+        Button cancelBtn = new Button(I18n.t("İptal", "Cancel"));
+        Button unlockBtn = new Button(I18n.t("Kilidi Aç", "Unlock"));
         unlockBtn.getStyleClass().add("btn-primary");
         MotionFx.attachPressSpring(unlockBtn);
         Region fSpacer = new Region();
@@ -489,7 +491,7 @@ public final class VaultDrawers {
             clearError(errorBanner);
             String vStr = vaultPathField.getText().trim();
             if (vStr.isEmpty() || !Files.isRegularFile(Path.of(vStr))) {
-                showError(errorBanner, "Lütfen geçerli bir .sapphirypt kasa dosyası seçin.");
+                showError(errorBanner, I18n.t("Lütfen geçerli bir .sapphirypt kasa dosyası seçin.", "Please select a valid .sapphirypt vault file."));
                 return;
             }
             Path vaultPath = Path.of(vStr);
@@ -497,7 +499,7 @@ public final class VaultDrawers {
             if (useRecoveryKey.get()) {
                 String kStr = keyPathField.getText().trim();
                 if (kStr.isEmpty() || !Files.isRegularFile(Path.of(kStr))) {
-                    showError(errorBanner, "Lütfen geçerli bir .key kurtarma dosyası seçin.");
+                    showError(errorBanner, I18n.t("Lütfen geçerli bir .key kurtarma dosyası seçin.", "Please select a valid .key recovery file."));
                     return;
                 }
                 request = new OpenVaultRequest(vaultPath, true, null, Path.of(kStr));
@@ -505,7 +507,7 @@ public final class VaultDrawers {
                 char[] pw = pwInput.readChars();
                 if (pw.length == 0) {
                     SensitiveBytes.wipe(pw);
-                    showError(errorBanner, "Lütfen kasa parolasını girin.");
+                    showError(errorBanner, I18n.t("Lütfen kasa parolasını girin.", "Please enter the vault password."));
                     return;
                 }
                 request = new OpenVaultRequest(vaultPath, false, pw, null);
@@ -536,8 +538,8 @@ public final class VaultDrawers {
         });
 
         shell.openDrawer(
-                "Kasa Aç",
-                "Parolanız veya kurtarma anahtarınız ile kasayı çözün",
+                I18n.t("Kasa Aç", "Open Vault"),
+                I18n.t("Parolanız veya kurtarma anahtarınız ile kasayı çözün", "Unlock with your password or recovery key"),
                 body,
                 footer,
                 () -> !busy.get(),
@@ -559,14 +561,14 @@ public final class VaultDrawers {
         AtomicBoolean busy = new AtomicBoolean(false);
 
         TextField vaultField = new TextField(preselectedVault == null ? "" : preselectedVault.toString());
-        vaultField.setPromptText("Adı değiştirilecek .sapphirypt kasa dosyası");
+        vaultField.setPromptText(I18n.t("Adı değiştirilecek .sapphirypt kasa dosyası", ".sapphirypt vault file to rename"));
         TextField newNameField = new TextField(preselectedVault == null ? "" : stripVaultExtension(preselectedVault));
-        newNameField.setPromptText("Yeni kasa adı (uzantısız veya .sapphirypt)");
+        newNameField.setPromptText(I18n.t("Yeni kasa adı (uzantısız veya .sapphirypt)", "New vault name"));
 
-        Button browseVaultBtn = new Button("Gözat...");
+        Button browseVaultBtn = new Button(I18n.t("Gözat...", "Browse..."));
         browseVaultBtn.setOnAction(e -> {
             FileChooser chooser = new FileChooser();
-            chooser.setTitle("Kasa Dosyası Seç");
+            chooser.setTitle(I18n.t("Kasa Dosyası Seç", "Select Vault File"));
             chooser.getExtensionFilters().add(vaultExtFilter());
             File f = chooser.showOpenDialog(owner);
             if (f != null) {
@@ -575,13 +577,13 @@ public final class VaultDrawers {
             }
         });
 
-        PasswordInputRow pwInput = new PasswordInputRow("Kasa parolasını girin", themeManager);
+        PasswordInputRow pwInput = new PasswordInputRow(I18n.t("Kasa parolasını girin", "Enter vault password"), themeManager);
         TextField keyField = new TextField();
-        keyField.setPromptText("Bu kasaya ait .key kurtarma dosyası");
-        Button browseKeyBtn = new Button("Gözat...");
+        keyField.setPromptText(I18n.t("Bu kasaya ait .key kurtarma dosyası", ".key recovery file for this vault"));
+        Button browseKeyBtn = new Button(I18n.t("Gözat...", "Browse..."));
         browseKeyBtn.setOnAction(e -> {
             FileChooser chooser = new FileChooser();
-            chooser.setTitle("Kurtarma Anahtarı Seç");
+            chooser.setTitle(I18n.t("Kurtarma Anahtarı Seç", "Select Recovery Key"));
             chooser.getExtensionFilters().add(keyExtFilter());
             File f = chooser.showOpenDialog(owner);
             if (f != null) {
@@ -589,23 +591,25 @@ public final class VaultDrawers {
             }
         });
 
-        Label infoNote = new Label("Güvenlik gereği kasa adını değiştirmek için hem parola hem .key dosyası doğrulanır.");
+        Label infoNote = new Label(I18n.t(
+                "Güvenlik gereği kasa adını değiştirmek için hem parola hem .key dosyası doğrulanır.",
+                "For security, both password and .key file are verified before renaming."));
         infoNote.getStyleClass().add("sapphire-badge");
         infoNote.setWrapText(true);
         infoNote.setMaxWidth(Double.MAX_VALUE);
 
         Label errorBanner = createErrorBanner();
-        HBox busyRow = createBusyRow("Parola ve .key doğrulanıyor, kasa yeniden adlandırılıyor...");
+        HBox busyRow = createBusyRow(I18n.t("Parola ve .key doğrulanıyor, kasa yeniden adlandırılıyor...", "Verifying password and .key, renaming vault..."));
 
         VBox body = new VBox(12,
-                fieldLabel("Kasa Dosyası (.sapphirypt)"), pickerRow(vaultField, browseVaultBtn),
-                fieldLabel("Yeni Kasa Adı"), newNameField,
-                fieldLabel("Kasa Parolası"), pwInput,
-                fieldLabel("Kurtarma Anahtarı (.key)"), pickerRow(keyField, browseKeyBtn),
+                fieldLabel(I18n.t("Kasa Dosyası (.sapphirypt)", "Vault File (.sapphirypt)")), pickerRow(vaultField, browseVaultBtn),
+                fieldLabel(I18n.t("Yeni Kasa Adı", "New Vault Name")), newNameField,
+                fieldLabel(I18n.t("Kasa Parolası", "Vault Password")), pwInput,
+                fieldLabel(I18n.t("Kurtarma Anahtarı (.key)", "Recovery Key (.key)")), pickerRow(keyField, browseKeyBtn),
                 infoNote, errorBanner, busyRow);
 
-        Button cancelBtn = new Button("İptal");
-        Button applyBtn = new Button("Adı Değiştir");
+        Button cancelBtn = new Button(I18n.t("İptal", "Cancel"));
+        Button applyBtn = new Button(I18n.t("Adı Değiştir", "Rename Vault"));
         applyBtn.getStyleClass().add("btn-primary");
         Region fSpacer = new Region();
         HBox.setHgrow(fSpacer, Priority.ALWAYS);
@@ -616,18 +620,18 @@ public final class VaultDrawers {
             clearError(errorBanner);
             String vStr = vaultField.getText().trim();
             if (vStr.isEmpty() || !Files.isRegularFile(Path.of(vStr))) {
-                showError(errorBanner, "Lütfen geçerli bir .sapphirypt kasa dosyası seçin.");
+                showError(errorBanner, I18n.t("Lütfen geçerli bir .sapphirypt kasa dosyası seçin.", "Please select a valid .sapphirypt vault file."));
                 return;
             }
             String kStr = keyField.getText().trim();
             if (kStr.isEmpty() || !Files.isRegularFile(Path.of(kStr))) {
-                showError(errorBanner, "Lütfen bu kasaya ait geçerli bir .key kurtarma dosyası seçin.");
+                showError(errorBanner, I18n.t("Lütfen bu kasaya ait geçerli bir .key kurtarma dosyası seçin.", "Please select a valid .key recovery file for this vault."));
                 return;
             }
             char[] pw = pwInput.readChars();
             if (pw.length == 0) {
                 SensitiveBytes.wipe(pw);
-                showError(errorBanner, "Lütfen kasa parolasını girin.");
+                showError(errorBanner, I18n.t("Lütfen kasa parolasını girin.", "Please enter the vault password."));
                 return;
             }
             String candidate;
@@ -658,8 +662,8 @@ public final class VaultDrawers {
         });
 
         shell.openDrawer(
-                "Kasa Adını Değiştir",
-                "Parola + .key çift doğrulaması ile kasa dosya adını güncelleyin",
+                I18n.t("Kasa Adını Değiştir", "Rename Vault"),
+                I18n.t("Parola + .key çift doğrulaması ile kasa dosya adını güncelleyin", "Rename the vault file with Password + .key verification"),
                 body,
                 footer,
                 () -> !busy.get(),
@@ -675,11 +679,11 @@ public final class VaultDrawers {
         AtomicBoolean busy = new AtomicBoolean(false);
 
         TextField vaultField = new TextField(preselectedVault == null ? "" : preselectedVault.toString());
-        vaultField.setPromptText("Silinecek .sapphirypt kasa dosyası");
-        Button browseVaultBtn = new Button("Gözat...");
+        vaultField.setPromptText(I18n.t("Silinecek .sapphirypt kasa dosyası", ".sapphirypt vault file to delete"));
+        Button browseVaultBtn = new Button(I18n.t("Gözat...", "Browse..."));
         browseVaultBtn.setOnAction(e -> {
             FileChooser chooser = new FileChooser();
-            chooser.setTitle("Silinecek Kasa Dosyası");
+            chooser.setTitle(I18n.t("Silinecek Kasa Dosyası", "Vault File to Delete"));
             chooser.getExtensionFilters().add(vaultExtFilter());
             File f = chooser.showOpenDialog(owner);
             if (f != null) {
@@ -687,13 +691,13 @@ public final class VaultDrawers {
             }
         });
 
-        PasswordInputRow pwInput = new PasswordInputRow("Kasa parolasını girin", themeManager);
+        PasswordInputRow pwInput = new PasswordInputRow(I18n.t("Kasa parolasını girin", "Enter vault password"), themeManager);
         TextField keyField = new TextField();
-        keyField.setPromptText("Bu kasaya ait .key kurtarma dosyası");
-        Button browseKeyBtn = new Button("Gözat...");
+        keyField.setPromptText(I18n.t("Bu kasaya ait .key kurtarma dosyası", ".key recovery file for this vault"));
+        Button browseKeyBtn = new Button(I18n.t("Gözat...", "Browse..."));
         browseKeyBtn.setOnAction(e -> {
             FileChooser chooser = new FileChooser();
-            chooser.setTitle("Kurtarma Anahtarı Seç");
+            chooser.setTitle(I18n.t("Kurtarma Anahtarı Seç", "Select Recovery Key"));
             chooser.getExtensionFilters().add(keyExtFilter());
             File f = chooser.showOpenDialog(owner);
             if (f != null) {
@@ -701,29 +705,31 @@ public final class VaultDrawers {
             }
         });
 
-        CheckBox deleteKeyCheck = new CheckBox("Seçilen .key kurtarma dosyasını da diskten kalıcı sil");
+        CheckBox deleteKeyCheck = new CheckBox(I18n.t("Seçilen .key kurtarma dosyasını da diskten kalıcı sil", "Also permanently delete the selected .key recovery file"));
         MotionFx.enhanceCheckBox(deleteKeyCheck);
 
         VBox dangerBox = new VBox(6,
-                new Label("Kalıcı Silme Uyarısı"),
-                mutedWrap("Kasa ve içindeki tüm şifrelenmiş dosyalar geri dönüşsüz olarak silinir. Parola + .key eşleşmezse işlem engellenir."));
+                new Label(I18n.t("Kalıcı Silme Uyarısı", "Permanent Deletion Warning")),
+                mutedWrap(I18n.t(
+                        "Kasa ve içindeki tüm şifrelenmiş dosyalar geri dönüşsüz olarak silinir. Parola + .key eşleşmezse işlem engellenir.",
+                        "The vault and all files inside it will be permanently deleted. Verification requires Password + .key.")));
         dangerBox.getStyleClass().add("danger-card");
         dangerBox.setPadding(new Insets(12));
 
         Label errorBanner = createErrorBanner();
-        HBox busyRow = createBusyRow("Parola ve .key doğrulanıyor, kasa siliniyor...");
+        HBox busyRow = createBusyRow(I18n.t("Parola ve .key doğrulanıyor, kasa siliniyor...", "Verifying password and .key, deleting vault..."));
 
         VBox body = new VBox(12,
-                fieldLabel("Silinecek Kasa (.sapphirypt)"), pickerRow(vaultField, browseVaultBtn),
-                fieldLabel("Kasa Parolası"), pwInput,
-                fieldLabel("Kurtarma Anahtarı (.key)"), pickerRow(keyField, browseKeyBtn),
+                fieldLabel(I18n.t("Silinecek Kasa (.sapphirypt)", "Vault to Delete (.sapphirypt)")), pickerRow(vaultField, browseVaultBtn),
+                fieldLabel(I18n.t("Kasa Parolası", "Vault Password")), pwInput,
+                fieldLabel(I18n.t("Kurtarma Anahtarı (.key)", "Recovery Key (.key)")), pickerRow(keyField, browseKeyBtn),
                 deleteKeyCheck,
                 dangerBox,
                 errorBanner,
                 busyRow);
 
-        Button cancelBtn = new Button("Vazgeç");
-        Button deleteBtn = new Button("Kasayı Kalıcı Sil");
+        Button cancelBtn = new Button(I18n.t("Vazgeç", "Cancel"));
+        Button deleteBtn = new Button(I18n.t("Kasayı Kalıcı Sil", "Delete Vault Permanently"));
         deleteBtn.getStyleClass().add("btn-danger");
         Region fSpacer = new Region();
         HBox.setHgrow(fSpacer, Priority.ALWAYS);
@@ -734,26 +740,26 @@ public final class VaultDrawers {
             clearError(errorBanner);
             String vStr = vaultField.getText().trim();
             if (vStr.isEmpty() || !Files.isRegularFile(Path.of(vStr))) {
-                showError(errorBanner, "Lütfen geçerli bir .sapphirypt kasa dosyası seçin.");
+                showError(errorBanner, I18n.t("Lütfen geçerli bir .sapphirypt kasa dosyası seçin.", "Please select a valid .sapphirypt vault file."));
                 return;
             }
             String kStr = keyField.getText().trim();
             if (kStr.isEmpty() || !Files.isRegularFile(Path.of(kStr))) {
-                showError(errorBanner, "Lütfen bu kasaya ait geçerli bir .key kurtarma dosyası seçin.");
+                showError(errorBanner, I18n.t("Lütfen bu kasaya ait geçerli bir .key kurtarma dosyası seçin.", "Please select a valid .key recovery file for this vault."));
                 return;
             }
             char[] pw = pwInput.readChars();
             if (pw.length == 0) {
                 SensitiveBytes.wipe(pw);
-                showError(errorBanner, "Lütfen kasa parolasını girin.");
+                showError(errorBanner, I18n.t("Lütfen kasa parolasını girin.", "Please enter the vault password."));
                 return;
             }
 
             Path targetVault = Path.of(vStr);
             shell.showConfirmOverlay(
-                    "Kasayı Kalıcı Olarak Sil?",
-                    targetVault.getFileName() + " kasası kalıcı olarak silinecek ve bu işlem geri alınamayacaktır.",
-                    "Evet, Kalıcı Sil",
+                    I18n.t("Kasayı Kalıcı Olarak Sil?", "Permanently Delete Vault?"),
+                    targetVault.getFileName() + I18n.t(" kasası kalıcı olarak silinecek ve bu işlem geri alınamayacaktır.", " will be permanently deleted and cannot be recovered."),
+                    I18n.t("Evet, Kalıcı Sil", "Yes, Delete Permanently"),
                     true,
                     confirmed -> {
                         if (!confirmed) {
@@ -781,8 +787,8 @@ public final class VaultDrawers {
         });
 
         shell.openDrawer(
-                "Kasayı Kalıcı Sil",
-                "Parola + .key çift doğrulaması gerektirir",
+                I18n.t("Kasayı Kalıcı Sil", "Delete Vault Permanently"),
+                I18n.t("Parola + .key çift doğrulaması gerektirir", "Requires Password + .key dual verification"),
                 body,
                 footer,
                 () -> !busy.get(),
@@ -803,9 +809,9 @@ public final class VaultDrawers {
         AtomicBoolean busy = new AtomicBoolean(false);
 
         // Segmented tabs
-        Button tabPwBtn = new Button("Parola");
+        Button tabPwBtn = new Button(I18n.t("Parola", "Password"));
         Button tabKeyBtn = new Button(".key");
-        Button tabManageBtn = new Button("Kasa Yönetimi");
+        Button tabManageBtn = new Button(I18n.t("Kasa Yönetimi", "Vault Management"));
         tabPwBtn.getStyleClass().add("segmented-btn");
         tabKeyBtn.getStyleClass().add("segmented-btn");
         tabManageBtn.getStyleClass().add("segmented-btn");
@@ -817,13 +823,13 @@ public final class VaultDrawers {
         tabBar.setActive(tabPwBtn, false);
 
         // Tab 1: Password
-        PasswordInputRow curPwInput = new PasswordInputRow("Mevcut parola", themeManager);
-        PasswordInputRow newPwInput = new PasswordInputRow("Yeni parola", themeManager);
-        PasswordInputRow confirmPwInput = new PasswordInputRow("Yeni parola tekrar", themeManager);
+        PasswordInputRow curPwInput = new PasswordInputRow(I18n.t("Mevcut parola", "Current password"), themeManager);
+        PasswordInputRow newPwInput = new PasswordInputRow(I18n.t("Yeni parola", "New password"), themeManager);
+        PasswordInputRow confirmPwInput = new PasswordInputRow(I18n.t("Yeni parola tekrar", "Confirm new password"), themeManager);
         ProgressBar newStrengthBar = new ProgressBar(0.0);
         newStrengthBar.setMaxWidth(Double.MAX_VALUE);
         newStrengthBar.setPrefHeight(6);
-        Label newStrengthLbl = new Label("Parola gücü: -");
+        Label newStrengthLbl = new Label(I18n.t("Parola gücü: -", "Password strength: -"));
         newStrengthLbl.getStyleClass().add("muted-text");
         newStrengthLbl.setStyle("-fx-font-size: 11.5px;");
         newPwInput.addTextListener(() -> updateStrengthMeter(newPwInput.textValue(), newStrengthBar, newStrengthLbl));
@@ -835,41 +841,43 @@ public final class VaultDrawers {
         configurePresetCombo(kdfCombo);
 
         Label pwError = createErrorBanner();
-        Button updatePwBtn = new Button("Parolayı Güncelle");
+        Button updatePwBtn = new Button(I18n.t("Parolayı Güncelle", "Update Password"));
         updatePwBtn.getStyleClass().add("btn-primary");
         updatePwBtn.setMaxWidth(Double.MAX_VALUE);
 
         VBox pwTabPane = new VBox(11,
-                fieldLabel("Mevcut Parola"), curPwInput,
-                fieldLabel("Yeni Parola"), newPwInput,
-                fieldLabel("Yeni Parola Tekrar"), confirmPwInput,
+                fieldLabel(I18n.t("Mevcut Parola", "Current Password")), curPwInput,
+                fieldLabel(I18n.t("Yeni Parola", "New Password")), newPwInput,
+                fieldLabel(I18n.t("Yeni Parola Tekrar", "Confirm New Password")), confirmPwInput,
                 new VBox(4, newStrengthBar, newStrengthLbl),
-                fieldLabel("Güvenlik Seviyesi"), kdfCombo,
+                fieldLabel(I18n.t("Güvenlik Seviyesi", "Security Level")), kdfCombo,
                 pwError,
                 updatePwBtn);
 
         // Tab 2: .key Rotation
         TextField newKeyPathField = new TextField();
-        newKeyPathField.setPromptText("Yeni .key dosyası konumu");
-        Button browseNewKeyBtn = new Button("Gözat...");
+        newKeyPathField.setPromptText(I18n.t("Yeni .key dosyası konumu", "New .key file location"));
+        Button browseNewKeyBtn = new Button(I18n.t("Gözat...", "Browse..."));
         browseNewKeyBtn.setOnAction(e -> {
             FileChooser chooser = new FileChooser();
-            chooser.setTitle("Yeni Kurtarma Anahtarı (.key)");
+            chooser.setTitle(I18n.t("Yeni Kurtarma Anahtarı (.key)", "New Recovery Key (.key)"));
             chooser.getExtensionFilters().add(keyExtFilter());
-            chooser.setInitialFileName("yeni-kurtarma" + VaultConstants.RECOVERY_KEY_EXTENSION);
+            chooser.setInitialFileName(I18n.t("yeni-kurtarma", "new-recovery") + VaultConstants.RECOVERY_KEY_EXTENSION);
             File f = chooser.showSaveDialog(owner);
             if (f != null) {
                 newKeyPathField.setText(ensureExtension(f.getAbsolutePath(), VaultConstants.RECOVERY_KEY_EXTENSION));
             }
         });
         Label recError = createErrorBanner();
-        Button rotateKeyBtn = new Button("Yeni Kurtarma Anahtarı Oluştur");
+        Button rotateKeyBtn = new Button(I18n.t("Yeni Kurtarma Anahtarı Oluştur", "Generate New Recovery Key"));
         rotateKeyBtn.getStyleClass().add("btn-primary");
         rotateKeyBtn.setMaxWidth(Double.MAX_VALUE);
 
         VBox keyTabPane = new VBox(12,
-                mutedWrap("Yeni kurtarma anahtarı oluşturulduğunda önceki .key dosyası kalıcı olarak geçersiz olur."),
-                fieldLabel("Yeni .key Dosya Yolu"),
+                mutedWrap(I18n.t(
+                        "Yeni kurtarma anahtarı oluşturulduğunda önceki .key dosyası kalıcı olarak geçersiz olur.",
+                        "Generating a new recovery key permanently invalidates the previous .key file.")),
+                fieldLabel(I18n.t("Yeni .key Dosya Yolu", "New .key File Path")),
                 pickerRow(newKeyPathField, browseNewKeyBtn),
                 recError,
                 rotateKeyBtn);
@@ -878,14 +886,14 @@ public final class VaultDrawers {
 
         // Tab 3: Vault Management (Rename + Dangerous Delete)
         TextField renameNameField = new TextField(stripVaultExtension(session.vaultPath()));
-        renameNameField.setPromptText("Yeni kasa adı");
-        PasswordInputRow renamePwInput = new PasswordInputRow("Kasa parolasını girin", themeManager);
+        renameNameField.setPromptText(I18n.t("Yeni kasa adı", "New vault name"));
+        PasswordInputRow renamePwInput = new PasswordInputRow(I18n.t("Kasa parolasını girin", "Enter vault password"), themeManager);
         TextField renameKeyField = new TextField();
-        renameKeyField.setPromptText("Mevcut .key kurtarma dosyası");
-        Button browseRenameKeyBtn = new Button("Gözat...");
+        renameKeyField.setPromptText(I18n.t("Mevcut .key kurtarma dosyası", "Current .key recovery file"));
+        Button browseRenameKeyBtn = new Button(I18n.t("Gözat...", "Browse..."));
         browseRenameKeyBtn.setOnAction(e -> {
             FileChooser chooser = new FileChooser();
-            chooser.setTitle("Kurtarma Anahtarı Seç");
+            chooser.setTitle(I18n.t("Kurtarma Anahtarı Seç", "Select Recovery Key"));
             chooser.getExtensionFilters().add(keyExtFilter());
             File f = chooser.showOpenDialog(owner);
             if (f != null) {
@@ -893,47 +901,49 @@ public final class VaultDrawers {
             }
         });
         Label renameError = createErrorBanner();
-        Button renameBtn = new Button("Kasa Adını Değiştir");
+        Button renameBtn = new Button(I18n.t("Kasa Adını Değiştir", "Rename Vault"));
         renameBtn.getStyleClass().add("btn-primary");
         renameBtn.setMaxWidth(Double.MAX_VALUE);
 
         VBox renameCard = new VBox(10,
-                sectionHeader("KASA ADINI DEĞİŞTİR"),
-                fieldLabel("Yeni Ad"), renameNameField,
-                fieldLabel("Kasa Parolası"), renamePwInput,
-                fieldLabel("Kurtarma Anahtarı (.key)"), pickerRow(renameKeyField, browseRenameKeyBtn),
+                sectionHeader(I18n.t("KASA ADINI DEĞİŞTİR", "RENAME VAULT")),
+                fieldLabel(I18n.t("Yeni Ad", "New Name")), renameNameField,
+                fieldLabel(I18n.t("Kasa Parolası", "Vault Password")), renamePwInput,
+                fieldLabel(I18n.t("Kurtarma Anahtarı (.key)", "Recovery Key (.key)")), pickerRow(renameKeyField, browseRenameKeyBtn),
                 renameError,
                 renameBtn);
         renameCard.getStyleClass().add("panel-card");
         renameCard.setPadding(new Insets(14));
 
-        PasswordInputRow delPwInput = new PasswordInputRow("Kasa parolasını girin", themeManager);
+        PasswordInputRow delPwInput = new PasswordInputRow(I18n.t("Kasa parolasını girin", "Enter vault password"), themeManager);
         TextField delKeyField = new TextField();
-        delKeyField.setPromptText("Bu kasaya ait .key kurtarma dosyası");
-        Button browseDelKeyBtn = new Button("Gözat...");
+        delKeyField.setPromptText(I18n.t("Bu kasaya ait .key kurtarma dosyası", ".key recovery file for this vault"));
+        Button browseDelKeyBtn = new Button(I18n.t("Gözat...", "Browse..."));
         browseDelKeyBtn.setOnAction(e -> {
             FileChooser chooser = new FileChooser();
-            chooser.setTitle("Kurtarma Anahtarı Seç");
+            chooser.setTitle(I18n.t("Kurtarma Anahtarı Seç", "Select Recovery Key"));
             chooser.getExtensionFilters().add(keyExtFilter());
             File f = chooser.showOpenDialog(owner);
             if (f != null) {
                 delKeyField.setText(f.getAbsolutePath());
             }
         });
-        CheckBox delKeyCheck = new CheckBox(".key kurtarma dosyasını da diskten kalıcı sil");
+        CheckBox delKeyCheck = new CheckBox(I18n.t(".key kurtarma dosyasını da diskten kalıcı sil", "Also permanently delete the .key recovery file"));
         MotionFx.enhanceCheckBox(delKeyCheck);
         Label delError = createErrorBanner();
-        Button delVaultBtn = new Button("Kasayı Kalıcı Olarak Sil");
+        Button delVaultBtn = new Button(I18n.t("Kasayı Kalıcı Olarak Sil", "Permanently Delete Vault"));
         delVaultBtn.getStyleClass().add("btn-danger");
         delVaultBtn.setMaxWidth(Double.MAX_VALUE);
 
-        Label dangerTitle = new Label("TEHLİKELİ BÖLGE — KALICI SİLME");
+        Label dangerTitle = new Label(I18n.t("TEHLİKELİ BÖLGE — KALICI SİLME", "DANGER ZONE — PERMANENT DELETION"));
         dangerTitle.setStyle("-fx-font-size: 11px; -fx-font-weight: bold; -fx-text-fill: #F87171;");
         VBox dangerCard = new VBox(10,
                 dangerTitle,
-                mutedWrap("Kasa oturumu kapatılır ve dosya kalıcı olarak silinir. İşlem Parola + .key gerektirir."),
-                fieldLabel("Kasa Parolası"), delPwInput,
-                fieldLabel("Kurtarma Anahtarı (.key)"), pickerRow(delKeyField, browseDelKeyBtn),
+                mutedWrap(I18n.t(
+                        "Kasa oturumu kapatılır ve dosya kalıcı olarak silinir. İşlem Parola + .key gerektirir.",
+                        "Closes the vault session and permanently deletes the file. Requires Password + .key.")),
+                fieldLabel(I18n.t("Kasa Parolası", "Vault Password")), delPwInput,
+                fieldLabel(I18n.t("Kurtarma Anahtarı (.key)", "Recovery Key (.key)")), pickerRow(delKeyField, browseDelKeyBtn),
                 delKeyCheck,
                 delError,
                 delVaultBtn);
@@ -944,7 +954,7 @@ public final class VaultDrawers {
         manageTabPane.setVisible(false);
         manageTabPane.setManaged(false);
 
-        HBox busyRow = createBusyRow("İşlem yürütülüyor...");
+        HBox busyRow = createBusyRow(I18n.t("İşlem yürütülüyor...", "Processing..."));
 
         // Tab switching
         int[] activeTabIdx = {0};
@@ -983,14 +993,14 @@ public final class VaultDrawers {
                 SensitiveBytes.wipe(cur);
                 SensitiveBytes.wipe(n1);
                 SensitiveBytes.wipe(n2);
-                showError(pwError, "Mevcut ve yeni parola alanları boş olamaz.");
+                showError(pwError, I18n.t("Mevcut ve yeni parola alanları boş olamaz.", "Current and new password fields cannot be empty."));
                 return;
             }
             if (!Arrays.equals(n1, n2)) {
                 SensitiveBytes.wipe(cur);
                 SensitiveBytes.wipe(n1);
                 SensitiveBytes.wipe(n2);
-                showError(pwError, "Yeni parolalar eşleşmiyor.");
+                showError(pwError, I18n.t("Yeni parolalar eşleşmiyor.", "New passwords do not match."));
                 return;
             }
             SensitiveBytes.wipe(n2);
@@ -998,7 +1008,7 @@ public final class VaultDrawers {
             if (preset == null || !preset.available()) {
                 SensitiveBytes.wipe(cur);
                 SensitiveBytes.wipe(n1);
-                showError(pwError, "Seçilen güvenlik seviyesi bu cihazda kullanılamıyor.");
+                showError(pwError, I18n.t("Seçilen güvenlik seviyesi bu cihazda kullanılamıyor.", "Selected security level is unavailable on this device."));
                 return;
             }
 
@@ -1011,13 +1021,13 @@ public final class VaultDrawers {
                         newPwInput.clear();
                         confirmPwInput.clear();
                         setBusy(busy, false, busyRow, updatePwBtn, rotateKeyBtn, renameBtn, delVaultBtn);
-                        shell.showToast(ToastType.SUCCESS, "Parola Güncellendi", "Yeni parolanız kaydedildi.");
+                        shell.showToast(ToastType.SUCCESS, I18n.t("Parola Güncellendi", "Password Updated"), I18n.t("Yeni parolanız kaydedildi.", "Your new password has been saved."));
                         if (onDone != null) onDone.run();
                     });
                 } catch (Exception ex) {
                     Platform.runLater(() -> {
                         setBusy(busy, false, busyRow, updatePwBtn, rotateKeyBtn, renameBtn, delVaultBtn);
-                        showError(pwError, "Parola değiştirilemedi: " + ex.getMessage());
+                        showError(pwError, I18n.t("Parola değiştirilemedi: ", "Could not update password: ") + ex.getMessage());
                     });
                 } finally {
                     SensitiveBytes.wipe(cur);
@@ -1030,7 +1040,7 @@ public final class VaultDrawers {
             clearError(recError);
             String pathStr = newKeyPathField.getText().trim();
             if (pathStr.isEmpty()) {
-                showError(recError, "Lütfen yeni kurtarma anahtarı için bir dosya yolu seçin.");
+                showError(recError, I18n.t("Lütfen yeni kurtarma anahtarı için bir dosya yolu seçin.", "Please choose a file path for the new recovery key."));
                 return;
             }
             setBusy(busy, true, busyRow, updatePwBtn, rotateKeyBtn, renameBtn, delVaultBtn);
@@ -1039,13 +1049,13 @@ public final class VaultDrawers {
                     Path saved = session.rotateRecoveryKey(Path.of(pathStr));
                     Platform.runLater(() -> {
                         setBusy(busy, false, busyRow, updatePwBtn, rotateKeyBtn, renameBtn, delVaultBtn);
-                        shell.showToast(ToastType.SUCCESS, "Kurtarma Anahtarı Yenilendi", saved.getFileName().toString());
+                        shell.showToast(ToastType.SUCCESS, I18n.t("Kurtarma Anahtarı Yenilendi", "Recovery Key Rotated"), saved.getFileName().toString());
                         if (onDone != null) onDone.run();
                     });
                 } catch (Exception ex) {
                     Platform.runLater(() -> {
                         setBusy(busy, false, busyRow, updatePwBtn, rotateKeyBtn, renameBtn, delVaultBtn);
-                        showError(recError, "Kurtarma anahtarı yenilenemedi: " + ex.getMessage());
+                        showError(recError, I18n.t("Kurtarma anahtarı yenilenemedi: ", "Could not rotate recovery key: ") + ex.getMessage());
                     });
                 }
             });
@@ -1062,13 +1072,13 @@ public final class VaultDrawers {
             }
             String kStr = renameKeyField.getText().trim();
             if (kStr.isEmpty() || !Files.isRegularFile(Path.of(kStr))) {
-                showError(renameError, "Lütfen bu kasaya ait geçerli bir .key kurtarma dosyası seçin.");
+                showError(renameError, I18n.t("Lütfen bu kasaya ait geçerli bir .key kurtarma dosyası seçin.", "Please select a valid .key recovery file for this vault."));
                 return;
             }
             char[] pw = renamePwInput.readChars();
             if (pw.length == 0) {
                 SensitiveBytes.wipe(pw);
-                showError(renameError, "Lütfen kasa parolasını girin.");
+                showError(renameError, I18n.t("Lütfen kasa parolasını girin.", "Please enter the vault password."));
                 return;
             }
 
@@ -1080,14 +1090,14 @@ public final class VaultDrawers {
                         renamePwInput.clear();
                         renameNameField.setText(stripVaultExtension(newPath));
                         setBusy(busy, false, busyRow, updatePwBtn, rotateKeyBtn, renameBtn, delVaultBtn);
-                        shell.showToast(ToastType.SUCCESS, "Kasa Adı Değiştirildi", newPath.getFileName().toString());
+                        shell.showToast(ToastType.SUCCESS, I18n.t("Kasa Adı Değiştirildi", "Vault Renamed"), newPath.getFileName().toString());
                         if (onVaultRenamed != null) onVaultRenamed.accept(newPath);
                         if (onDone != null) onDone.run();
                     });
                 } catch (Exception ex) {
                     Platform.runLater(() -> {
                         setBusy(busy, false, busyRow, updatePwBtn, rotateKeyBtn, renameBtn, delVaultBtn);
-                        showError(renameError, "Kasa adı değiştirilemedi: " + ex.getMessage());
+                        showError(renameError, I18n.t("Kasa adı değiştirilemedi: ", "Could not rename vault: ") + ex.getMessage());
                     });
                 } finally {
                     SensitiveBytes.wipe(pw);
@@ -1099,21 +1109,21 @@ public final class VaultDrawers {
             clearError(delError);
             String kStr = delKeyField.getText().trim();
             if (kStr.isEmpty() || !Files.isRegularFile(Path.of(kStr))) {
-                showError(delError, "Lütfen bu kasaya ait geçerli bir .key kurtarma dosyası seçin.");
+                showError(delError, I18n.t("Lütfen bu kasaya ait geçerli bir .key kurtarma dosyası seçin.", "Please select a valid .key recovery file for this vault."));
                 return;
             }
             char[] pw = delPwInput.readChars();
             if (pw.length == 0) {
                 SensitiveBytes.wipe(pw);
-                showError(delError, "Lütfen kasa parolasını girin.");
+                showError(delError, I18n.t("Lütfen kasa parolasını girin.", "Please enter the vault password."));
                 return;
             }
 
             boolean deleteKey = delKeyCheck.isSelected();
             shell.showConfirmOverlay(
-                    "Açık Kasa Kalıcı Silinsin mi?",
-                    session.vaultPath().getFileName() + " kasası kapatılıp kalıcı olarak silinecektir.",
-                    "Evet, Kalıcı Sil",
+                    I18n.t("Açık Kasa Kalıcı Silinsin mi?", "Permanently Delete Open Vault?"),
+                    session.vaultPath().getFileName() + I18n.t(" kasası kapatılıp kalıcı olarak silinecektir.", " will be closed and permanently deleted."),
+                    I18n.t("Evet, Kalıcı Sil", "Yes, Delete Permanently"),
                     true,
                     confirmed -> {
                         if (!confirmed) {
@@ -1133,7 +1143,7 @@ public final class VaultDrawers {
                             } catch (Exception ex) {
                                 Platform.runLater(() -> {
                                     setBusy(busy, false, busyRow, updatePwBtn, rotateKeyBtn, renameBtn, delVaultBtn);
-                                    showError(delError, "Kasa silinemedi: " + ex.getMessage());
+                                    showError(delError, I18n.t("Kasa silinemedi: ", "Could not delete vault: ") + ex.getMessage());
                                 });
                             } finally {
                                 SensitiveBytes.wipe(pw);
@@ -1143,14 +1153,14 @@ public final class VaultDrawers {
         });
 
         VBox body = new VBox(14, tabBar, pwTabPane, keyTabPane, manageTabPane, busyRow);
-        Button closeBtn = new Button("Kapat");
+        Button closeBtn = new Button(I18n.t("Kapat", "Close"));
         closeBtn.setOnAction(e -> shell.closeDrawer());
         HBox footer = new HBox(closeBtn);
         footer.setAlignment(Pos.CENTER_RIGHT);
 
         shell.openDrawer(
-                "Güvenlik & Kasa Yönetimi",
-                "Parola, .key kurtarma anahtarı, yeniden adlandırma ve kalıcı silme",
+                I18n.t("Güvenlik & Kasa Yönetimi", "Security & Vault Management"),
+                I18n.t("Parola, .key kurtarma anahtarı, yeniden adlandırma ve kalıcı silme", "Password, .key recovery key, rename and permanent deletion"),
                 body,
                 footer,
                 () -> !busy.get(),
@@ -1190,10 +1200,21 @@ public final class VaultDrawers {
             VaultSession session,
             AutoLockMonitor autoLockMonitor,
             Runnable onSettingsApplied) {
+        showSettingsDrawer(shell, settings, themeManager, session, autoLockMonitor, null, onSettingsApplied);
+    }
+
+    public static void showSettingsDrawer(
+            UiShell shell,
+            AppSettings settings,
+            ThemeManager themeManager,
+            VaultSession session,
+            AutoLockMonitor autoLockMonitor,
+            ClipboardGuard clipboardGuard,
+            Runnable onSettingsApplied) {
         // Theme segmented switch (live preview on click!)
-        Button autoThemeBtn = new Button("Otomatik");
-        Button darkThemeBtn = new Button("Koyu");
-        Button lightThemeBtn = new Button("Açık");
+        Button autoThemeBtn = new Button(I18n.t("Otomatik", "Auto"));
+        Button darkThemeBtn = new Button(I18n.t("Koyu", "Dark"));
+        Button lightThemeBtn = new Button(I18n.t("Açık", "Light"));
         for (Button b : new Button[]{autoThemeBtn, darkThemeBtn, lightThemeBtn}) {
             b.getStyleClass().add("segmented-btn");
             b.setMaxWidth(Double.MAX_VALUE);
@@ -1226,12 +1247,14 @@ public final class VaultDrawers {
             syncThemeButtons.run();
         });
 
-        Label themeRuleNote = mutedWrap("Otomatik modda 07:00–19:00 arası Açık (soft buz mavisi), 19:00–07:00 arası Koyu (obsidyen safir) tema uygulanır.");
+        Label themeRuleNote = mutedWrap(I18n.t(
+                "Otomatik modda 07:00–19:00 arası Açık (soft buz mavisi), 19:00–07:00 arası Koyu (obsidyen safir) tema uygulanır.",
+                "Auto mode applies Light (soft ice blue) from 07:00–19:00 and Dark (obsidian sapphire) from 19:00–07:00."));
         themeRuleNote.setStyle("-fx-font-size: 11.5px;");
 
         boolean[] selectedGridView = {settings.defaultGridView()};
-        Button gridViewBtn = new Button("Izgara");
-        Button listViewBtn = new Button("Liste");
+        Button gridViewBtn = new Button(I18n.t("Izgara", "Grid"));
+        Button listViewBtn = new Button(I18n.t("Liste", "List"));
         for (Button b : new Button[]{gridViewBtn, listViewBtn}) {
             b.getStyleClass().add("segmented-btn");
             b.setMaxWidth(Double.MAX_VALUE);
@@ -1252,15 +1275,39 @@ public final class VaultDrawers {
             }
         });
 
-        CheckBox previewDefaultCheck = new CheckBox("Kasa açıldığında önizleme panelini göster");
+        CheckBox previewDefaultCheck = new CheckBox(I18n.t("Kasa açıldığında önizleme panelini göster", "Show preview panel when opening a vault"));
         previewDefaultCheck.setSelected(settings.previewEnabledByDefault());
         MotionFx.enhanceCheckBox(previewDefaultCheck);
 
+        // Language switch
+        String[] selectedLanguage = {settings.language()};
+        Button trLangBtn = new Button("Türkçe");
+        Button enLangBtn = new Button("English");
+        for (Button b : new Button[]{trLangBtn, enLangBtn}) {
+            b.getStyleClass().add("segmented-btn");
+            b.setMaxWidth(Double.MAX_VALUE);
+            HBox.setHgrow(b, Priority.ALWAYS);
+        }
+        MotionFx.SegmentedSwitch languageSwitch = new MotionFx.SegmentedSwitch(4, trLangBtn, enLangBtn);
+        languageSwitch.setActive("en".equals(selectedLanguage[0]) ? enLangBtn : trLangBtn, false);
+        trLangBtn.setOnAction(e -> {
+            if (!"tr".equals(selectedLanguage[0])) {
+                selectedLanguage[0] = "tr";
+                languageSwitch.setActive(trLangBtn, true);
+            }
+        });
+        enLangBtn.setOnAction(e -> {
+            if (!"en".equals(selectedLanguage[0])) {
+                selectedLanguage[0] = "en";
+                languageSwitch.setActive(enLangBtn, true);
+            }
+        });
+
         // CPU Profile 3-way switch
         CpuProfile[] selectedProfile = {settings.cpuProfile()};
-        Button lowBtn = new Button(CpuProfile.POWER_SAVER.displayName());
-        Button balBtn = new Button(CpuProfile.BALANCED.displayName());
-        Button fastBtn = new Button(CpuProfile.PERFORMANCE.displayName());
+        Button lowBtn = new Button(I18n.cpuProfileLabel(CpuProfile.POWER_SAVER));
+        Button balBtn = new Button(I18n.cpuProfileLabel(CpuProfile.BALANCED));
+        Button fastBtn = new Button(I18n.cpuProfileLabel(CpuProfile.PERFORMANCE));
         for (Button b : new Button[]{lowBtn, balBtn, fastBtn}) {
             b.getStyleClass().add("segmented-btn");
             b.setMaxWidth(Double.MAX_VALUE);
@@ -1286,7 +1333,9 @@ public final class VaultDrawers {
             cpuSwitch.setActive(activeCpu, cpuInit[0]);
             cpuInit[0] = true;
             int val = workerSpinner.getValue() == null ? 0 : workerSpinner.getValue();
-            workerInfo.setText("Eşzamanlı işlem sayısı: " + selectedProfile[0].computeWorkerCount(val) + " (0 = otomatik)");
+            workerInfo.setText(I18n.t("Eşzamanlı işlem sayısı: ", "Concurrent operations: ")
+                    + selectedProfile[0].computeWorkerCount(val)
+                    + I18n.t(" (0 = otomatik)", " (0 = automatic)"));
         };
         updateCpuUi.run();
         lowBtn.setOnAction(e -> {
@@ -1312,78 +1361,159 @@ public final class VaultDrawers {
             @Override
             protected void updateItem(Integer item, boolean empty) {
                 super.updateItem(item, empty);
-                setText(empty || item == null ? "" : (item == 0 ? "Kapalı (yalnızca uyku/kapanışta kilitle)" : item + " dakika"));
+                if (empty || item == null) {
+                    setText("");
+                } else if (item == 0) {
+                    setText(I18n.t("Kapalı (yalnızca uyku/kapanışta kilitle)", "Off (lock only on sleep/exit)"));
+                } else {
+                    setText(item + I18n.t(" dakika", " min"));
+                }
             }
         });
         autoLockCombo.setButtonCell(autoLockCombo.getCellFactory().call(null));
         MotionFx.enhanceComboBox(autoLockCombo);
 
-        CheckBox keepActiveCheck = new CheckBox("Aktarım sürerken açık tut");
+        CheckBox keepActiveCheck = new CheckBox(I18n.t("Aktarım sürerken açık tut", "Keep unlocked during transfers"));
         MotionFx.enhanceCheckBox(keepActiveCheck);
         keepActiveCheck.setSelected(settings.keepUnlockedDuringTransfers());
         keepActiveCheck.setMinWidth(Region.USE_PREF_SIZE);
-        keepActiveCheck.setTooltip(new Tooltip("Dosya ekleme, dışa aktarma veya sıkıştırma devam ederken hareketsizlik süresi dolsa bile kasa kilitlenmez. Bilgisayar uyku moduna geçerse kasa yine kilitlenir."));
+        keepActiveCheck.setTooltip(new Tooltip(I18n.t(
+                "Dosya ekleme, dışa aktarma veya sıkıştırma devam ederken hareketsizlik süresi dolsa bile kasa kilitlenmez. Bilgisayar uyku moduna geçerse kasa yine kilitlenir.",
+                "Prevents inactivity auto-lock while importing, exporting, or compacting. System sleep still locks the vault.")));
         keepActiveCheck.disableProperty().bind(autoLockCombo.valueProperty().isEqualTo(0));
         HBox.setHgrow(autoLockCombo, Priority.ALWAYS);
         HBox autoLockRow = new HBox(12, autoLockCombo, keepActiveCheck);
         autoLockRow.setAlignment(Pos.CENTER_LEFT);
-        Label keepActiveNote = mutedWrap("İşaretliyken dosya aktarımı bitene kadar süre sayacı durur; işlem bittiğinde sayaç yeniden başlar.");
+        Label keepActiveNote = mutedWrap(I18n.t(
+                "İşaretliyken dosya aktarımı bitene kadar süre sayacı durur; işlem bittiğinde sayaç yeniden başlar.",
+                "When enabled, the inactivity timer pauses during file transfers and resumes once complete."));
         keepActiveNote.setStyle("-fx-font-size: 11.5px;");
 
-        CheckBox autoCompactCheck = new CheckBox("Kasa kapatıldığında otomatik sıkıştır");
+        CheckBox autoCompactCheck = new CheckBox(I18n.t("Kasa kapatıldığında otomatik sıkıştır", "Auto-compact when closing vault"));
         MotionFx.enhanceCheckBox(autoCompactCheck);
         autoCompactCheck.setSelected(settings.autoCompactOnClose());
-        Label autoCompactNote = mutedWrap("İşaretliyken kasa kilitlendiğinde veya uygulama kapatıldığında boşta alan varsa kasa otomatik olarak küçültülür.");
+        Label autoCompactNote = mutedWrap(I18n.t(
+                "İşaretliyken kasa kilitlendiğinde veya uygulama kapatıldığında boşta alan varsa kasa otomatik olarak küçültülür.",
+                "When enabled, unused vault space is compacted automatically upon locking or closing."));
         autoCompactNote.setStyle("-fx-font-size: 11.5px;");
+
+        // Clipboard Security (toggle + duration)
+        CheckBox clipboardAutoClearCheck = new CheckBox(I18n.t("Panoyu otomatik temizle", "Auto-clear clipboard"));
+        MotionFx.enhanceCheckBox(clipboardAutoClearCheck);
+        clipboardAutoClearCheck.setSelected(settings.clipboardAutoClearEnabled());
+        clipboardAutoClearCheck.setMinWidth(Region.USE_PREF_SIZE);
+
+        ComboBox<Integer> clipboardSecondsCombo = new ComboBox<>();
+        clipboardSecondsCombo.getItems().addAll(15, 30, 60, 120);
+        int currentClipSec = settings.clipboardClearSeconds();
+        if (!clipboardSecondsCombo.getItems().contains(currentClipSec)) {
+            clipboardSecondsCombo.getItems().add(currentClipSec);
+            clipboardSecondsCombo.getItems().sort(Integer::compareTo);
+        }
+        clipboardSecondsCombo.setValue(currentClipSec);
+        clipboardSecondsCombo.setMaxWidth(Double.MAX_VALUE);
+        clipboardSecondsCombo.setCellFactory(lv -> new ListCell<>() {
+            @Override
+            protected void updateItem(Integer item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? "" : item + I18n.t(" saniye", " seconds"));
+            }
+        });
+        clipboardSecondsCombo.setButtonCell(clipboardSecondsCombo.getCellFactory().call(null));
+        MotionFx.enhanceComboBox(clipboardSecondsCombo);
+        clipboardSecondsCombo.disableProperty().bind(clipboardAutoClearCheck.selectedProperty().not());
+        HBox.setHgrow(clipboardSecondsCombo, Priority.ALWAYS);
+        HBox clipboardRow = new HBox(12, clipboardAutoClearCheck, clipboardSecondsCombo);
+        clipboardRow.setAlignment(Pos.CENTER_LEFT);
+        Label clipboardNote = mutedWrap(I18n.t(
+                "Kasa açıkken kopyalanan hassas metinler seçilen süre dolunca (veya kasa kilitlendiğinde) panodan temizlenir.",
+                "Sensitive text copied while unlocked is cleared from clipboard after the timeout or when locking."));
+        clipboardNote.setStyle("-fx-font-size: 11.5px;");
+
+        // System Tray
+        boolean traySupported = SystemTrayController.isSupportedOnPlatform();
+        CheckBox minimizeToTrayCheck = new CheckBox(I18n.t("Pencere kapatıldığında sistem tepsisine küçült", "Minimize to system tray on window close"));
+        MotionFx.enhanceCheckBox(minimizeToTrayCheck);
+        minimizeToTrayCheck.setSelected(settings.minimizeToTray());
+        minimizeToTrayCheck.setDisable(!traySupported);
+        Label trayNote = mutedWrap(traySupported
+                ? I18n.t(
+                        "İşaretliyken kapat düğmesine basıldığında uygulama kapanmaz; sistem tepsisinde çalışmaya devam eder.",
+                        "When checked, closing the window keeps the app running in the system tray instead of exiting.")
+                : I18n.t(
+                        "Sistem tepsisi bu masaüstü ortamında desteklenmiyor.",
+                        "System tray is not supported in this desktop environment."));
+        trayNote.setStyle("-fx-font-size: 11.5px;");
+
+        // Optional Source Shred After Import
+        CheckBox shredSourceCheck = new CheckBox(I18n.t(
+                "İçe aktarma sonrası kaynak dosyayı güvenli sil",
+                "Securely shred source file after import"));
+        MotionFx.enhanceCheckBox(shredSourceCheck);
+        shredSourceCheck.setSelected(settings.shredSourceAfterImport());
+        Label shredNote = mutedWrap(I18n.t(
+                "Yalnızca kasa kaydı doğrulandıktan sonra diskteki orijinal dosya üzerine yazılarak kalıcı olarak silinir.",
+                "Only after vault import is verified, the original file on disk is overwritten and permanently deleted."));
+        shredNote.setStyle("-fx-font-size: 11.5px;");
 
         // Cache stats
         Label cacheLabel = mutedWrap("");
         cacheLabel.setStyle("-fx-font-size: 11.5px;");
         Runnable refreshCache = () -> {
             if (session == null || session.isClosed()) {
-                cacheLabel.setText("Şu anda açık kasa yok.");
+                cacheLabel.setText(I18n.t("Şu anda açık kasa yok.", "No vault currently open."));
             } else {
                 BlockCache.CacheStats st = session.getCacheStats();
                 long totalCacheBytes = st.encryptedBytes() + st.plaintextBytes();
-                cacheLabel.setText("Geçici önbellek kullanımı: " + FormatUtils.formatBytes(totalCacheBytes));
+                cacheLabel.setText(I18n.t("Geçici önbellek kullanımı: ", "Temporary cache usage: ") + FormatUtils.formatBytes(totalCacheBytes));
             }
         };
         refreshCache.run();
 
-        Button clearCacheBtn = new Button("Önbelleği Şimdi Temizle");
+        Button clearCacheBtn = new Button(I18n.t("Önbelleği Şimdi Temizle", "Clear Cache Now"));
         clearCacheBtn.setDisable(session == null || session.isClosed());
         clearCacheBtn.setOnAction(e -> {
             if (session != null && !session.isClosed()) {
                 session.clearCache();
                 refreshCache.run();
-                shell.showToast(ToastType.INFO, "Önbellek Temizlendi", "Bellekteki geçici veriler temizlendi.");
+                shell.showToast(ToastType.INFO,
+                        I18n.t("Önbellek Temizlendi", "Cache Cleared"),
+                        I18n.t("Bellekteki geçici veriler temizlendi.", "Temporary in-memory data cleared."));
             }
         });
 
         VBox themeCard = new VBox(10,
-                sectionHeader("GÖRÜNÜM & TEMA"),
+                sectionHeader(I18n.t("GÖRÜNÜM & DİL", "APPEARANCE & LANGUAGE")),
                 themeSwitch,
                 themeRuleNote,
-                fieldLabel("Varsayılan Kasa Görünümü"),
+                fieldLabel(I18n.t("Varsayılan Kasa Görünümü", "Default Vault View")),
                 defaultViewSwitch,
-                previewDefaultCheck);
+                previewDefaultCheck,
+                fieldLabel(I18n.t("Arayüz Dili", "Interface Language")),
+                languageSwitch);
         themeCard.getStyleClass().add("panel-card");
         themeCard.setPadding(new Insets(14));
 
         VBox perfCard = new VBox(10,
-                sectionHeader("PERFORMANS"),
-                fieldLabel("Performans Modu"), cpuSwitch,
-                fieldLabel("Paralel İşlem Sınırı"), workerSpinner,
+                sectionHeader(I18n.t("PERFORMANS", "PERFORMANCE")),
+                fieldLabel(I18n.t("Performans Modu", "Performance Mode")), cpuSwitch,
+                fieldLabel(I18n.t("Paralel İşlem Sınırı", "Concurrent Operations Limit")), workerSpinner,
                 workerInfo);
         perfCard.getStyleClass().add("panel-card");
         perfCard.setPadding(new Insets(14));
 
         VBox lockCacheCard = new VBox(10,
-                sectionHeader("OTOMATİK KİLİT & ÖNBELLEK"),
-                fieldLabel("Hareketsizlik Sonrası Kilitleme"), autoLockRow,
+                sectionHeader(I18n.t("GÜVENLİK, SİSTEM & ÖNBELLEK", "SECURITY, SYSTEM & CACHE")),
+                fieldLabel(I18n.t("Hareketsizlik Sonrası Kilitleme", "Inactivity Auto-Lock")), autoLockRow,
                 keepActiveNote,
+                fieldLabel(I18n.t("Pano Güvenliği", "Clipboard Security")), clipboardRow,
+                clipboardNote,
                 autoCompactCheck,
                 autoCompactNote,
+                shredSourceCheck,
+                shredNote,
+                minimizeToTrayCheck,
+                trayNote,
                 cacheLabel,
                 clearCacheBtn);
         lockCacheCard.getStyleClass().add("panel-card");
@@ -1391,8 +1521,8 @@ public final class VaultDrawers {
 
         VBox body = new VBox(14, themeCard, perfCard, lockCacheCard);
 
-        Button cancelBtn = new Button("Kapat");
-        Button saveBtn = new Button("Kaydet ve Uygula");
+        Button cancelBtn = new Button(I18n.t("Kapat", "Close"));
+        Button saveBtn = new Button(I18n.t("Kaydet ve Uygula", "Save & Apply"));
         saveBtn.getStyleClass().add("btn-primary");
         MotionFx.attachPressSpring(saveBtn);
         Region fSpacer = new Region();
@@ -1406,9 +1536,15 @@ public final class VaultDrawers {
             settings.setAutoLockMinutes(autoLockCombo.getValue() == null ? 10 : autoLockCombo.getValue());
             settings.setKeepUnlockedDuringTransfers(keepActiveCheck.isSelected());
             settings.setAutoCompactOnClose(autoCompactCheck.isSelected());
+            settings.setShredSourceAfterImport(shredSourceCheck.isSelected());
             settings.setDefaultViewMode(selectedGridView[0] ? "GRID" : "LIST");
             settings.setPreviewEnabledByDefault(previewDefaultCheck.isSelected());
+            settings.setClipboardAutoClearEnabled(clipboardAutoClearCheck.isSelected());
+            settings.setClipboardClearSeconds(clipboardSecondsCombo.getValue() == null ? 30 : clipboardSecondsCombo.getValue());
+            settings.setMinimizeToTray(traySupported && minimizeToTrayCheck.isSelected());
+            settings.setLanguage(selectedLanguage[0]);
             settings.save();
+            I18n.setLanguage(settings.language());
             if (session != null && !session.isClosed()) {
                 session.reconfigureWorkers(settings.cpuProfile(), settings.maxWorkersOverride());
             }
@@ -1416,16 +1552,21 @@ public final class VaultDrawers {
                 autoLockMonitor.updateTimeoutMinutes(settings.autoLockMinutes());
                 autoLockMonitor.setKeepActiveDuringTransfers(settings.keepUnlockedDuringTransfers());
             }
+            if (clipboardGuard != null) {
+                clipboardGuard.updateSettings(settings.clipboardAutoClearEnabled(), settings.clipboardClearSeconds());
+            }
             if (onSettingsApplied != null) {
                 onSettingsApplied.run();
             }
             shell.closeDrawer(true);
-            shell.showToast(ToastType.SUCCESS, "Ayarlar Kaydedildi", "Performans ve kilit ayarları uygulandı.");
+            shell.showToast(ToastType.SUCCESS,
+                    I18n.t("Ayarlar Kaydedildi", "Settings Saved"),
+                    I18n.t("Tüm tercihleriniz uygulandı.", "Your preferences have been applied."));
         });
 
         shell.openDrawer(
-                "Ayarlar",
-                "Görünüm, Gece/Gündüz teması, performans modu ve otomatik kilitleme",
+                I18n.t("Ayarlar", "Settings"),
+                I18n.t("Görünüm, dil, pano güvenliği, sistem tepsisi ve performans", "Appearance, language, clipboard security, system tray and performance"),
                 body,
                 footer,
                 () -> true,
@@ -1473,7 +1614,7 @@ public final class VaultDrawers {
     }
 
     private static void showError(Label banner, String msg) {
-        banner.setText(msg == null || msg.isBlank() ? "İşlem sırasında bir hata oluştu." : msg);
+        banner.setText(msg == null || msg.isBlank() ? I18n.t("İşlem sırasında bir hata oluştu.", "An error occurred during the operation.") : msg);
         banner.setVisible(true);
         banner.setManaged(true);
         MotionFx.playErrorShake(banner);
@@ -1509,7 +1650,7 @@ public final class VaultDrawers {
         if (pw == null || pw.isEmpty()) {
             MotionFx.animateProgress(bar, 0.0, 180.0);
             bar.setStyle("");
-            label.setText("Parola gücü: -");
+            label.setText(I18n.t("Parola gücü: -", "Password strength: -"));
             return;
         }
         int score = 0;
@@ -1523,15 +1664,15 @@ public final class VaultDrawers {
         if (score <= 2) {
             MotionFx.animateProgress(bar, 0.30, 200.0);
             bar.setStyle("-fx-accent: #EF4444;");
-            label.setText("Parola gücü: Zayıf");
+            label.setText(I18n.t("Parola gücü: Zayıf", "Password strength: Weak"));
         } else if (score <= 4) {
             MotionFx.animateProgress(bar, 0.62, 200.0);
             bar.setStyle("-fx-accent: #F59E0B;");
-            label.setText("Parola gücü: Orta");
+            label.setText(I18n.t("Parola gücü: Orta", "Password strength: Fair"));
         } else {
             MotionFx.animateProgress(bar, 1.0, 200.0);
             bar.setStyle("-fx-accent: #22C55E;");
-            label.setText("Parola gücü: Güçlü");
+            label.setText(I18n.t("Parola gücü: Güçlü", "Password strength: Strong"));
         }
     }
 
@@ -1564,18 +1705,30 @@ public final class VaultDrawers {
         String raw = item.label() == null ? "" : item.label();
         int parenIdx = raw.indexOf(" (");
         String cleanName = parenIdx > 0 ? raw.substring(0, parenIdx) : raw;
-        return item.available() ? cleanName : cleanName + " (Bu cihazda kullanılamaz)";
+        if (I18n.isEnglish()) {
+            cleanName = switch (cleanName) {
+                case "Önerilen" -> "Recommended";
+                case "Düşük Bellek" -> "Low Memory";
+                case "Standart" -> "Standard";
+                case "Güçlü" -> "Strong";
+                case "Yüksek" -> "High";
+                case "Çok Yüksek" -> "Very High";
+                case "Maksimum" -> "Maximum";
+                default -> cleanName;
+            };
+        }
+        return item.available() ? cleanName : cleanName + I18n.t(" (Bu cihazda kullanılamaz)", " (Unavailable on this device)");
     }
 
     private static FileChooser.ExtensionFilter vaultExtFilter() {
         return new FileChooser.ExtensionFilter(
-                "Sapphirypt Kasası (*" + VaultConstants.FILE_EXTENSION + ")",
+                I18n.t("Sapphirypt Kasası (*", "Sapphirypt Vault (*") + VaultConstants.FILE_EXTENSION + ")",
                 "*" + VaultConstants.FILE_EXTENSION);
     }
 
     private static FileChooser.ExtensionFilter keyExtFilter() {
         return new FileChooser.ExtensionFilter(
-                "Kurtarma Anahtarı (*" + VaultConstants.RECOVERY_KEY_EXTENSION + ")",
+                I18n.t("Kurtarma Anahtarı (*", "Recovery Key (*") + VaultConstants.RECOVERY_KEY_EXTENSION + ")",
                 "*" + VaultConstants.RECOVERY_KEY_EXTENSION);
     }
 

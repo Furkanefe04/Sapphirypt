@@ -1281,3 +1281,69 @@
 .theme-light .scroll-bar .thumb:hover {
     -fx-background-color: #93B8F7;
 }
+
+/* ========================= PHASE 2 COMPONENTS ========================= */
+
+.theme-dark .lasso-rect {
+    -fx-fill: rgba(59, 130, 246, 0.16);
+    -fx-stroke: #60A5FA;
+    -fx-stroke-width: 1.5;
+    -fx-arc-width: 6;
+    -fx-arc-height: 6;
+}
+
+.theme-light .lasso-rect {
+    -fx-fill: rgba(37, 99, 235, 0.14);
+    -fx-stroke: #2563EB;
+    -fx-stroke-width: 1.5;
+    -fx-arc-width: 6;
+    -fx-arc-height: 6;
+}
+
+.theme-dark .tag-pill {
+    -fx-background-color: rgba(59, 130, 246, 0.22);
+    -fx-text-fill: #93C5FD;
+    -fx-border-color: rgba(96, 165, 250, 0.45);
+    -fx-border-width: 1px;
+    -fx-background-radius: 999px;
+    -fx-border-radius: 999px;
+    -fx-padding: 2px 7px;
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+}
+
+.theme-light .tag-pill {
+    -fx-background-color: rgba(37, 99, 235, 0.12);
+    -fx-text-fill: #1D4ED8;
+    -fx-border-color: rgba(37, 99, 235, 0.32);
+    -fx-border-width: 1px;
+    -fx-background-radius: 999px;
+    -fx-border-radius: 999px;
+    -fx-padding: 2px 7px;
+    -fx-font-size: 10px;
+    -fx-font-weight: bold;
+}
+
+.favorite-star-active {
+    -fx-text-fill: #FBBF24;
+}
+
+.theme-light .favorite-star-active {
+    -fx-text-fill: #D97706;
+}
+
+.theme-dark .version-row-card {
+    -fx-background-color: rgba(15, 23, 42, 0.72);
+    -fx-border-color: #1E2E4F;
+    -fx-border-width: 1px;
+    -fx-background-radius: 10px;
+    -fx-border-radius: 10px;
+}
+
+.theme-light .version-row-card {
+    -fx-background-color: rgba(255, 255, 255, 0.85);
+    -fx-border-color: #C7DAF5;
+    -fx-border-width: 1px;
+    -fx-background-radius: 10px;
+    -fx-border-radius: 10px;
+}

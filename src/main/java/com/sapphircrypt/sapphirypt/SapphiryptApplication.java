@@ -4,13 +4,17 @@ import com.sapphircrypt.sapphirypt.format.VaultMetadata.StorageStats;
 import com.sapphircrypt.sapphirypt.storage.AppSettings;
 import com.sapphircrypt.sapphirypt.storage.CancellationToken;
 import com.sapphircrypt.sapphirypt.storage.ProgressListener;
+import com.sapphircrypt.sapphirypt.storage.SingleInstanceCoordinator;
 import com.sapphircrypt.sapphirypt.storage.TempPreviewManager;
 import com.sapphircrypt.sapphirypt.storage.VaultSession;
 import com.sapphircrypt.sapphirypt.storage.VaultSession.VaultCreationResult;
 import com.sapphircrypt.sapphirypt.ui.AutoLockMonitor;
+import com.sapphircrypt.sapphirypt.ui.ClipboardGuard;
 import com.sapphircrypt.sapphirypt.ui.FormatUtils;
+import com.sapphircrypt.sapphirypt.ui.I18n;
 import com.sapphircrypt.sapphirypt.ui.SapphireIcons;
 import com.sapphircrypt.sapphirypt.ui.SplashScreen;
+import com.sapphircrypt.sapphirypt.ui.SystemTrayController;
 import com.sapphircrypt.sapphirypt.ui.ThemeManager;
 import com.sapphircrypt.sapphirypt.ui.UiShell;
 import com.sapphircrypt.sapphirypt.ui.UiShell.ToastType;
@@ -21,6 +25,9 @@ import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
 import javafx.scene.control.Button;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyEvent;
 import javafx.scene.paint.Color;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
@@ -59,12 +66,29 @@ public final class SapphiryptApplication extends Application {
     private VaultSession activeSession;
     private Path activeVaultPath;
     private AutoLockMonitor autoLockMonitor;
+    private SingleInstanceCoordinator singleInstanceCoordinator;
+    private ClipboardGuard clipboardGuard;
+    private SystemTrayController systemTrayController;
+    private Button securityContextBtn;
+    private Button lockContextBtn;
+    private volatile Path pendingIncomingVaultPath;
     private volatile boolean shuttingDown;
+    private volatile boolean explicitExitRequested;
     private boolean closingVaultInProgress;
     private boolean exitAfterAutoCompact;
 
     @Override
     public void start(Stage stage) {
+        List<String> startupArgs = getParameters() != null ? getParameters().getRaw() : List.of();
+        this.singleInstanceCoordinator = SingleInstanceCoordinator.tryAcquireOrForward(
+                startupArgs,
+                this::handleIncomingFileOpen,
+                this::bringMainWindowToFront);
+        if (this.singleInstanceCoordinator == null) {
+            Platform.exit();
+            return;
+        }
+
         this.primaryStage = stage;
         stage.initStyle(StageStyle.TRANSPARENT);
         var appIcons = SapphireIcons.getApplicationIcons();
@@ -73,12 +97,14 @@ public final class SapphiryptApplication extends Application {
         }
 
         AppSettings preloadedSettings = loadSettingsSafely();
+        I18n.setLanguage(preloadedSettings.language());
         boolean initialDark = preloadedSettings.themeMode().isDarkAt(LocalTime.now());
         this.splashScreen = new SplashScreen(initialDark);
         this.splashScreen.show();
 
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             if (activeSession != null) activeSession.close();
+            if (singleInstanceCoordinator != null) singleInstanceCoordinator.close();
         }, "sapphirypt-shutdown"));
 
         Thread startupThread = new Thread(() -> runStartupSequence(stage, preloadedSettings), "sapphirypt-startup");
@@ -157,7 +183,10 @@ public final class SapphiryptApplication extends Application {
                     stage.show();
                 }
                 if (uiShell != null) {
-                    uiShell.showErrorOverlay("Başlatma Hatası", "Uygulama başlatılırken bir hata oluştu.", ex);
+                    uiShell.showErrorOverlay(
+                            I18n.t("Başlatma Hatası", "Startup Error"),
+                            I18n.t("Uygulama başlatılırken bir hata oluştu.", "An error occurred while starting the application."),
+                            ex);
                 }
             });
         }
@@ -180,6 +209,7 @@ public final class SapphiryptApplication extends Application {
 
     private void initializePrimaryUi(Stage stage, AppSettings loadedSettings) {
         this.settings = loadedSettings;
+        I18n.setLanguage(settings.language());
         this.themeManager = new ThemeManager(loadedSettings);
         this.uiShell = new UiShell(stage, themeManager, this::handleOpenSettings);
         this.welcomeView = new WelcomeView(
@@ -203,14 +233,47 @@ public final class SapphiryptApplication extends Application {
         autoLockMonitor = new AutoLockMonitor(scene, settings.autoLockMinutes(), this::lockActiveVault);
         autoLockMonitor.setKeepActiveDuringTransfers(settings.keepUnlockedDuringTransfers());
 
+        clipboardGuard = new ClipboardGuard(settings.clipboardAutoClearEnabled(), settings.clipboardClearSeconds());
+        scene.addEventFilter(KeyEvent.KEY_PRESSED, ev -> {
+            if (activeSession != null && !activeSession.isClosed()
+                    && ev.isShortcutDown() && ev.getCode() == KeyCode.C) {
+                Platform.runLater(() -> {
+                    if (activeSession != null && !activeSession.isClosed() && clipboardGuard != null) {
+                        Clipboard cb = Clipboard.getSystemClipboard();
+                        if (cb.hasString()) {
+                            clipboardGuard.recordSensitiveCopy(cb.getString());
+                        }
+                    }
+                });
+            }
+        });
+
+        systemTrayController = new SystemTrayController(
+                this::bringMainWindowToFront,
+                this::lockActiveVaultFromTray,
+                this::requestExplicitExit);
+        if (systemTrayController.isActive()) {
+            Platform.setImplicitExit(false);
+        }
+
         stage.setTitle("Sapphirypt");
         stage.setMinWidth(940);
         stage.setMinHeight(640);
         stage.setScene(scene);
         stage.setOnCloseRequest(ev -> {
             if (closingVaultInProgress) {
-                exitAfterAutoCompact = true;
+                exitAfterAutoCompact = !settings.minimizeToTray() || explicitExitRequested;
                 ev.consume();
+                return;
+            }
+            if (!explicitExitRequested
+                    && settings != null
+                    && settings.minimizeToTray()
+                    && systemTrayController != null
+                    && systemTrayController.isActive()) {
+                ev.consume();
+                primaryStage.hide();
+                systemTrayController.showMinimizedNotification();
                 return;
             }
             if (shouldAutoCompactBeforeClose()) {
@@ -219,6 +282,7 @@ public final class SapphiryptApplication extends Application {
                 return;
             }
             shutdownCleanly();
+            Platform.exit();
         });
     }
 
@@ -229,11 +293,105 @@ public final class SapphiryptApplication extends Application {
         primaryStage.show();
         welcomeView.playEntranceAnimation();
 
-        List<String> rawArgs = getParameters().getRaw();
-        if (!rawArgs.isEmpty()) {
-            Path argPath = Path.of(rawArgs.get(0));
-            if (Files.isRegularFile(argPath)) Platform.runLater(() -> handleOpenVault(argPath));
+        Path targetPath = pendingIncomingVaultPath;
+        pendingIncomingVaultPath = null;
+        if (targetPath == null) {
+            List<String> rawArgs = getParameters().getRaw();
+            if (!rawArgs.isEmpty() && rawArgs.get(0) != null && !rawArgs.get(0).isBlank()) {
+                targetPath = Path.of(rawArgs.get(0));
+            }
         }
+        if (targetPath != null && Files.isRegularFile(targetPath)) {
+            Path resolved = targetPath;
+            Platform.runLater(() -> handleIncomingFileOpen(resolved));
+        }
+    }
+
+    private void bringMainWindowToFront() {
+        if (!Platform.isFxApplicationThread()) {
+            Platform.runLater(this::bringMainWindowToFront);
+            return;
+        }
+        if (shuttingDown || primaryStage == null || splashScreen != null) {
+            return;
+        }
+        if (!primaryStage.isShowing()) {
+            primaryStage.show();
+        }
+        if (primaryStage.isIconified()) {
+            primaryStage.setIconified(false);
+        }
+        primaryStage.toFront();
+        primaryStage.requestFocus();
+    }
+
+    private void handleIncomingFileOpen(Path rawPath) {
+        if (rawPath == null || shuttingDown) {
+            return;
+        }
+        if (!Platform.isFxApplicationThread()) {
+            Platform.runLater(() -> handleIncomingFileOpen(rawPath));
+            return;
+        }
+        Path target = rawPath.toAbsolutePath().normalize();
+        if (welcomeView == null || splashScreen != null) {
+            pendingIncomingVaultPath = target;
+            return;
+        }
+        bringMainWindowToFront();
+        if (!Files.isRegularFile(target)) {
+            if (uiShell != null) {
+                uiShell.showToast(
+                        ToastType.WARNING,
+                        I18n.t("Dosya Bulunamadı", "File Not Found"),
+                        target.getFileName().toString());
+            }
+            return;
+        }
+        if (activeSession != null && !activeSession.isClosed()) {
+            if (activeVaultPath != null && activeVaultPath.toAbsolutePath().normalize().equals(target)) {
+                uiShell.showToast(
+                        ToastType.INFO,
+                        I18n.t("Kasa Zaten Açık", "Vault Already Open"),
+                        target.getFileName().toString());
+            } else {
+                uiShell.showToast(
+                        ToastType.INFO,
+                        I18n.t("Başka Bir Kasa Açık", "Another Vault Is Open"),
+                        I18n.t("Açmak için önce mevcut kasayı kilitleyin: ", "Lock the current vault first to open: ")
+                                + target.getFileName());
+            }
+            return;
+        }
+        handleOpenVault(target);
+    }
+
+    private void lockActiveVaultFromTray() {
+        if (!Platform.isFxApplicationThread()) {
+            Platform.runLater(this::lockActiveVaultFromTray);
+            return;
+        }
+        if (activeSession != null && !activeSession.isClosed()) {
+            lockActiveVault();
+        }
+    }
+
+    private void requestExplicitExit() {
+        if (!Platform.isFxApplicationThread()) {
+            Platform.runLater(this::requestExplicitExit);
+            return;
+        }
+        explicitExitRequested = true;
+        if (closingVaultInProgress) {
+            exitAfterAutoCompact = true;
+            return;
+        }
+        if (shouldAutoCompactBeforeClose()) {
+            compactThenLockOrExit(true, false);
+            return;
+        }
+        shutdownCleanly();
+        Platform.exit();
     }
 
     private void handleCreateVault() {
@@ -248,8 +406,8 @@ public final class SapphiryptApplication extends Application {
                             activateSession(created.session());
                             uiShell.showToast(
                                     ToastType.SUCCESS,
-                                    "Kasa Oluşturuldu",
-                                    "Kurtarma anahtarı kaydedildi: " + created.recoveryKeyPath().getFileName());
+                                    I18n.t("Kasa Oluşturuldu", "Vault Created"),
+                                    I18n.t("Kurtarma anahtarı kaydedildi: ", "Recovery key saved: ") + created.recoveryKeyPath().getFileName());
                         });
                     } catch (Exception ex) {
                         Platform.runLater(() -> callback.onFailure(ex.getMessage()));
@@ -269,7 +427,7 @@ public final class SapphiryptApplication extends Application {
                         Platform.runLater(() -> {
                             callback.onSuccess();
                             activateSession(session);
-                            uiShell.showToast(ToastType.SUCCESS, "Kasa Açıldı", session.vaultPath().getFileName().toString());
+                            uiShell.showToast(ToastType.SUCCESS, I18n.t("Kasa Açıldı", "Vault Unlocked"), session.vaultPath().getFileName().toString());
                         });
                     } catch (Exception ex) {
                         Platform.runLater(() -> callback.onFailure(ex.getMessage()));
@@ -289,7 +447,7 @@ public final class SapphiryptApplication extends Application {
                         settings.addRecentVault(newPath);
                         settings.save();
                         welcomeView.refreshRecentVaults();
-                        uiShell.showToast(ToastType.SUCCESS, "Kasa Adı Değiştirildi", newPath.getFileName().toString());
+                        uiShell.showToast(ToastType.SUCCESS, I18n.t("Kasa Adı Değiştirildi", "Vault Renamed"), newPath.getFileName().toString());
                     });
                 } catch (Exception ex) {
                     Platform.runLater(() -> callback.onFailure(ex.getMessage()));
@@ -309,7 +467,7 @@ public final class SapphiryptApplication extends Application {
                         settings.removeRecentVault(targetPath);
                         settings.save();
                         welcomeView.refreshRecentVaults();
-                        uiShell.showToast(ToastType.WARNING, "Kasa Kalıcı Silindi", targetPath.getFileName().toString());
+                        uiShell.showToast(ToastType.WARNING, I18n.t("Kasa Kalıcı Silindi", "Vault Permanently Deleted"), targetPath.getFileName().toString());
                     });
                 } catch (Exception ex) {
                     Platform.runLater(() -> callback.onFailure(ex.getMessage()));
@@ -320,18 +478,31 @@ public final class SapphiryptApplication extends Application {
 
     private void handleOpenSettings() {
         try {
-            VaultDrawers.showSettingsDrawer(uiShell, settings, themeManager, activeSession, autoLockMonitor, () -> {
+            VaultDrawers.showSettingsDrawer(uiShell, settings, themeManager, activeSession, autoLockMonitor, clipboardGuard, () -> {
+                if (uiShell != null) {
+                    uiShell.refreshLanguage();
+                }
+                if (systemTrayController != null) {
+                    systemTrayController.refreshLabels();
+                }
+                if (securityContextBtn != null) {
+                    securityContextBtn.setText(I18n.t("Güvenlik", "Security"));
+                }
+                if (lockContextBtn != null) {
+                    lockContextBtn.setText(I18n.t("Kilitle", "Lock"));
+                }
                 if (activeVaultView != null) {
+                    activeVaultView.refreshLanguage();
                     activeVaultView.applyViewSettings();
                     activeVaultView.refreshBadges();
                 }
                 if (welcomeView != null) {
-                    welcomeView.refreshRecentVaults();
+                    welcomeView.refreshLanguage();
                 }
             });
         } catch (Throwable ex) {
             if (uiShell != null) {
-                uiShell.showErrorOverlay("Ayarlar Açılamadı", ex.getMessage(), ex);
+                uiShell.showErrorOverlay(I18n.t("Ayarlar Açılamadı", "Could Not Open Settings"), ex.getMessage(), ex);
             }
         }
     }
@@ -345,6 +516,9 @@ public final class SapphiryptApplication extends Application {
         welcomeView.refreshRecentVaults();
 
         autoLockMonitor.resetActivity();
+        if (systemTrayController != null) {
+            systemTrayController.setVaultUnlocked(true);
+        }
         activeVaultView = new VaultView(
                 session,
                 settings,
@@ -354,25 +528,25 @@ public final class SapphiryptApplication extends Application {
                 this::handleActiveVaultRenamed,
                 this::handleActiveVaultDeleted);
 
-        Button securityBtn = new Button("Güvenlik");
-        securityBtn.getStyleClass().add("btn-ghost");
-        securityBtn.setGraphic(SapphireIcons.shield(14, uiShell.accentIconColor()));
-        securityBtn.setFocusTraversable(false);
-        securityBtn.setOnAction(e -> {
+        securityContextBtn = new Button(I18n.t("Güvenlik", "Security"));
+        securityContextBtn.getStyleClass().add("btn-ghost");
+        securityContextBtn.setGraphic(SapphireIcons.shield(14, uiShell.accentIconColor()));
+        securityContextBtn.setFocusTraversable(false);
+        securityContextBtn.setOnAction(e -> {
             if (activeVaultView != null) {
                 activeVaultView.openSecurityDrawer();
             }
         });
 
-        Button lockBtn = new Button("Kilitle");
-        lockBtn.getStyleClass().add("btn-danger");
-        lockBtn.setGraphic(SapphireIcons.lock(14, "#F87171"));
-        lockBtn.setFocusTraversable(false);
-        lockBtn.setOnAction(e -> lockActiveVault());
+        lockContextBtn = new Button(I18n.t("Kilitle", "Lock"));
+        lockContextBtn.getStyleClass().add("btn-danger");
+        lockContextBtn.setGraphic(SapphireIcons.lock(14, "#F87171"));
+        lockContextBtn.setFocusTraversable(false);
+        lockContextBtn.setOnAction(e -> lockActiveVault());
 
-        com.sapphircrypt.sapphirypt.ui.MotionFx.attachPressSpring(securityBtn);
-        com.sapphircrypt.sapphirypt.ui.MotionFx.attachPressSpring(lockBtn);
-        uiShell.setContextActions(securityBtn, lockBtn);
+        com.sapphircrypt.sapphirypt.ui.MotionFx.attachPressSpring(securityContextBtn);
+        com.sapphircrypt.sapphirypt.ui.MotionFx.attachPressSpring(lockContextBtn);
+        uiShell.setContextActions(securityContextBtn, lockContextBtn);
         uiShell.setContentAnimated(activeVaultView);
         uiShell.setTitleText("Sapphirypt — " + activeVaultPath.getFileName());
     }
@@ -401,6 +575,14 @@ public final class SapphiryptApplication extends Application {
             activeVaultView = null;
         }
         activeSession = null;
+        securityContextBtn = null;
+        lockContextBtn = null;
+        if (clipboardGuard != null) {
+            clipboardGuard.clearPendingNow();
+        }
+        if (systemTrayController != null) {
+            systemTrayController.setVaultUnlocked(false);
+        }
         welcomeView.refreshRecentVaults();
         uiShell.closeDrawer(true);
         uiShell.setContextActions();
@@ -409,8 +591,10 @@ public final class SapphiryptApplication extends Application {
         uiShell.setTitleText("Sapphirypt");
         uiShell.showToast(
                 ToastType.WARNING,
-                "Kasa Silindi",
-                deletedPath != null ? deletedPath.getFileName().toString() : "Açık kasa kalıcı olarak silindi.");
+                I18n.t("Kasa Silindi", "Vault Deleted"),
+                deletedPath != null
+                        ? deletedPath.getFileName().toString()
+                        : I18n.t("Açık kasa kalıcı olarak silindi.", "Open vault was permanently deleted."));
     }
 
     private boolean shouldAutoCompactBeforeClose() {
@@ -449,7 +633,10 @@ public final class SapphiryptApplication extends Application {
             activeVaultView.setDisable(true);
         }
         if (uiShell != null) {
-            uiShell.showToast(ToastType.INFO, "Kasa Sıkıştırılıyor", "Kapatılmadan önce boş alan temizleniyor...");
+            uiShell.showToast(
+                    ToastType.INFO,
+                    I18n.t("Kasa Sıkıştırılıyor", "Compacting Vault"),
+                    I18n.t("Kapatılmadan önce boş alan temizleniyor...", "Reclaiming unused space before closing..."));
         }
         authExecutor.submit(() -> {
             StorageStats after = null;
@@ -471,13 +658,13 @@ public final class SapphiryptApplication extends Application {
                         if (compactedStats != null) {
                             uiShell.showToast(
                                     ToastType.SUCCESS,
-                                    "Kasa Sıkıştırıldı ve Kilitlendi",
-                                    "Yeni boyut: " + FormatUtils.formatBytes(compactedStats.physicalFileSize()));
+                                    I18n.t("Kasa Sıkıştırıldı ve Kilitlendi", "Vault Compacted & Locked"),
+                                    I18n.t("Yeni boyut: ", "New size: ") + FormatUtils.formatBytes(compactedStats.physicalFileSize()));
                         } else {
                             uiShell.showToast(
                                     ToastType.WARNING,
-                                    "Kasa Kilitlendi",
-                                    "Otomatik sıkıştırma tamamlanamadı; kasa güvenle kilitlendi.");
+                                    I18n.t("Kasa Kilitlendi", "Vault Locked"),
+                                    I18n.t("Otomatik sıkıştırma tamamlanamadı; kasa güvenle kilitlendi.", "Auto-compaction did not finish; vault locked safely."));
                         }
                     }
                 }
@@ -498,6 +685,14 @@ public final class SapphiryptApplication extends Application {
             activeSession.close();
             activeSession = null;
         }
+        if (clipboardGuard != null) {
+            clipboardGuard.clearPendingNow();
+        }
+        if (systemTrayController != null) {
+            systemTrayController.setVaultUnlocked(false);
+        }
+        securityContextBtn = null;
+        lockContextBtn = null;
         if (autoLockMonitor != null) {
             autoLockMonitor.clearActivityHolds();
         }
@@ -511,7 +706,10 @@ public final class SapphiryptApplication extends Application {
                 welcomeView.playEntranceAnimation();
                 uiShell.setTitleText("Sapphirypt");
                 if (showToast && !shuttingDown) {
-                    uiShell.showToast(ToastType.INFO, "Kasa Kilitlendi", "Oturum anahtarları bellekten temizlendi.");
+                    uiShell.showToast(
+                            ToastType.INFO,
+                            I18n.t("Kasa Kilitlendi", "Vault Locked"),
+                            I18n.t("Oturum anahtarları bellekten temizlendi.", "Session keys cleared from memory."));
                 }
             }
         }
@@ -526,10 +724,23 @@ public final class SapphiryptApplication extends Application {
         lockActiveVaultInternal(false);
         if (welcomeView != null) {
             welcomeView.close();
+            welcomeView = null;
         }
         if (autoLockMonitor != null) {
             autoLockMonitor.close();
             autoLockMonitor = null;
+        }
+        if (clipboardGuard != null) {
+            clipboardGuard.close();
+            clipboardGuard = null;
+        }
+        if (systemTrayController != null) {
+            systemTrayController.close();
+            systemTrayController = null;
+        }
+        if (singleInstanceCoordinator != null) {
+            singleInstanceCoordinator.close();
+            singleInstanceCoordinator = null;
         }
         if (themeManager != null) {
             themeManager.close();

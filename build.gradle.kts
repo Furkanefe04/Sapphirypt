@@ -38,7 +38,7 @@ application {
 
 javafx {
     version = "22.0.1"
-    modules = listOf("javafx.controls", "javafx.fxml")
+    modules = listOf("javafx.controls", "javafx.fxml", "javafx.media", "javafx.web")
 }
 
 dependencies {
@@ -84,7 +84,11 @@ tasks.register("sha256Checksums") {
     doLast {
         val dirs = listOf(
             layout.buildDirectory.dir("libs").get().asFile,
-            layout.buildDirectory.dir("distributions").get().asFile
+            layout.buildDirectory.dir("distributions").get().asFile,
+            layout.buildDirectory.dir("distributions/windows-installer").get().asFile,
+            layout.buildDirectory.dir("distributions/windows-msi").get().asFile,
+            layout.buildDirectory.dir("distributions/linux-deb").get().asFile,
+            layout.buildDirectory.dir("distributions/linux-rpm").get().asFile
         )
         val hex = HexFormat.of()
         for (dir in dirs) {
@@ -121,6 +125,7 @@ val currentOs = OperatingSystem.current()
 val jpackageModulesDir = layout.buildDirectory.dir("jpackage-modules")
 val windowsAppDestDir = layout.buildDirectory.dir("distributions/windows")
 val windowsInstallerDestDir = layout.buildDirectory.dir("distributions/windows-installer")
+val windowsMsiDestDir = layout.buildDirectory.dir("distributions/windows-msi")
 val linuxAppDestDir = layout.buildDirectory.dir("distributions/linux")
 val linuxDebDestDir = layout.buildDirectory.dir("distributions/linux-deb")
 val linuxRpmDestDir = layout.buildDirectory.dir("distributions/linux-rpm")
@@ -198,7 +203,19 @@ val packageWindowsExe = registerJpackageTask(
     iconFile = windowsIconFile
 )
 
-registerJpackageTask(
+val windowsUpgradeUuid = "6b5a91e4-4c3f-4e8a-9b2d-7a8f31c0e451"
+val windowsInstallerExtraArgs = listOf(
+    "--win-dir-chooser",
+    "--win-menu",
+    "--win-menu-group", "Sapphirypt",
+    "--win-shortcut",
+    "--win-shortcut-prompt",
+    "--win-per-user-install",
+    "--win-upgrade-uuid", windowsUpgradeUuid,
+    "--file-associations", fileAssociationsFile.asFile.absolutePath
+)
+
+val packageWindowsInstaller = registerJpackageTask(
     taskName = "packageWindowsInstaller",
     taskDescription = "Builds Windows .exe installer under build/distributions/windows-installer/ (requires WiX Toolset 3.x).",
     requiredOsCheck = { currentOs.isWindows },
@@ -206,15 +223,25 @@ registerJpackageTask(
     packageType = "exe",
     destDirProvider = windowsInstallerDestDir,
     iconFile = windowsIconFile,
-    extraArgs = listOf(
-        "--win-dir-chooser",
-        "--win-menu",
-        "--win-shortcut",
-        "--win-shortcut-prompt",
-        "--win-per-user-install",
-        "--file-associations", fileAssociationsFile.asFile.absolutePath
-    )
+    extraArgs = windowsInstallerExtraArgs
 )
+
+val packageWindowsMsi = registerJpackageTask(
+    taskName = "packageWindowsMsi",
+    taskDescription = "Builds Windows .msi installer under build/distributions/windows-msi/ (requires WiX Toolset 3.x).",
+    requiredOsCheck = { currentOs.isWindows },
+    osErrorMessage = "packageWindowsMsi must be run on Windows with WiX Toolset 3.x installed.",
+    packageType = "msi",
+    destDirProvider = windowsMsiDestDir,
+    iconFile = windowsIconFile,
+    extraArgs = windowsInstallerExtraArgs
+)
+
+tasks.register("packageWindowsAll") {
+    group = "distribution"
+    description = "Builds Windows runnable bundle, .exe setup installer, and .msi installer."
+    dependsOn(packageWindowsExe, packageWindowsInstaller, packageWindowsMsi)
+}
 
 val packageLinuxApp = registerJpackageTask(
     taskName = "packageLinuxApp",

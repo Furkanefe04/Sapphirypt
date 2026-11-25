@@ -176,6 +176,21 @@ public final class TempPreviewManager {
         return target;
     }
 
+    /**
+     * Creates a hardened, isolated temporary staging directory for drag-out export.
+     * Cleaned up automatically when the vault session locks or closes.
+     */
+    public Path createExportStagingDir() throws IOException {
+        synchronized (sessionInitLock) {
+            ensureSessionInitializedLocked();
+            Path exportDir = sessionDir.resolve(randomTokenHex(8));
+            Files.createDirectories(exportDir);
+            hardenDirectory(exportDir);
+            trackedOpenDirs.add(exportDir);
+            return exportDir;
+        }
+    }
+
     public void hardenFile(Path file) {
         if (file == null || !Files.exists(file)) {
             return;

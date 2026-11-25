@@ -22,6 +22,11 @@ public final class AppSettings {
     private boolean autoCompactOnClose = false;
     private String defaultViewMode = "GRID";
     private boolean previewEnabledByDefault = true;
+    private boolean clipboardAutoClearEnabled = true;
+    private int clipboardClearSeconds = 30;
+    private boolean minimizeToTray = false;
+    private boolean shredSourceAfterImport = false;
+    private String language = "tr";
     private ThemeMode themeMode = ThemeMode.DARK;
     private final List<Path> recentVaults = new ArrayList<>();
 
@@ -53,6 +58,11 @@ public final class AppSettings {
             settings.autoCompactOnClose = Boolean.parseBoolean(props.getProperty("autoCompactOnClose", "false"));
             settings.setDefaultViewMode(props.getProperty("defaultViewMode", "GRID"));
             settings.previewEnabledByDefault = Boolean.parseBoolean(props.getProperty("previewEnabledByDefault", "true"));
+            settings.clipboardAutoClearEnabled = Boolean.parseBoolean(props.getProperty("clipboardAutoClearEnabled", "true"));
+            settings.clipboardClearSeconds = parseInt(props.getProperty("clipboardClearSeconds"), 30, 10, 300);
+            settings.minimizeToTray = Boolean.parseBoolean(props.getProperty("minimizeToTray", "false"));
+            settings.shredSourceAfterImport = Boolean.parseBoolean(props.getProperty("shredSourceAfterImport", "false"));
+            settings.setLanguage(props.getProperty("language", "tr"));
             String themeStr = props.getProperty("themeMode", ThemeMode.DARK.name());
             try {
                 settings.themeMode = ThemeMode.valueOf(themeStr);
@@ -88,6 +98,11 @@ public final class AppSettings {
             props.setProperty("autoCompactOnClose", Boolean.toString(autoCompactOnClose));
             props.setProperty("defaultViewMode", defaultViewMode);
             props.setProperty("previewEnabledByDefault", Boolean.toString(previewEnabledByDefault));
+            props.setProperty("clipboardAutoClearEnabled", Boolean.toString(clipboardAutoClearEnabled));
+            props.setProperty("clipboardClearSeconds", Integer.toString(clipboardClearSeconds));
+            props.setProperty("minimizeToTray", Boolean.toString(minimizeToTray));
+            props.setProperty("shredSourceAfterImport", Boolean.toString(shredSourceAfterImport));
+            props.setProperty("language", language);
             props.setProperty("themeMode", themeMode.name());
             props.setProperty("recentCount", Integer.toString(recentVaults.size()));
             for (int i = 0; i < recentVaults.size(); i++) {
@@ -158,6 +173,50 @@ public final class AppSettings {
 
     public void setPreviewEnabledByDefault(boolean previewEnabledByDefault) {
         this.previewEnabledByDefault = previewEnabledByDefault;
+    }
+
+    public boolean clipboardAutoClearEnabled() {
+        return clipboardAutoClearEnabled;
+    }
+
+    public void setClipboardAutoClearEnabled(boolean clipboardAutoClearEnabled) {
+        this.clipboardAutoClearEnabled = clipboardAutoClearEnabled;
+    }
+
+    public int clipboardClearSeconds() {
+        return clipboardClearSeconds;
+    }
+
+    public void setClipboardClearSeconds(int clipboardClearSeconds) {
+        this.clipboardClearSeconds = Math.max(10, Math.min(300, clipboardClearSeconds));
+    }
+
+    public boolean minimizeToTray() {
+        return minimizeToTray;
+    }
+
+    public void setMinimizeToTray(boolean minimizeToTray) {
+        this.minimizeToTray = minimizeToTray;
+    }
+
+    public boolean shredSourceAfterImport() {
+        return shredSourceAfterImport;
+    }
+
+    public void setShredSourceAfterImport(boolean shredSourceAfterImport) {
+        this.shredSourceAfterImport = shredSourceAfterImport;
+    }
+
+    public String language() {
+        return language;
+    }
+
+    public boolean isEnglish() {
+        return "en".equals(language);
+    }
+
+    public void setLanguage(String language) {
+        this.language = (language != null && "en".equalsIgnoreCase(language.trim())) ? "en" : "tr";
     }
 
     public ThemeMode themeMode() {

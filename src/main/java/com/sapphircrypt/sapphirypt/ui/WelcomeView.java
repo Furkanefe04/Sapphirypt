@@ -39,9 +39,21 @@ public final class WelcomeView extends BorderPane implements AutoCloseable {
     private final Runnable themeListener = this::refreshThemeSensitiveUi;
 
     private final ListView<Path> recentList = new ListView<>();
-    private final Label recentCountBadge = new Label("0 kasa");
+    private final Label recentCountBadge = new Label();
     private final Label statusLeftLabel = new Label();
     private final Label statusThemeLabel = new Label();
+
+    private Button createBtn;
+    private Button openBtn;
+    private MenuButton manageExternalBtn;
+    private MenuItem externalRenameItem;
+    private MenuItem externalDeleteItem;
+    private Label recentHeader;
+    private Label emptyPlaceholder;
+    private MenuItem ctxSelOpen;
+    private MenuItem ctxSelRename;
+    private MenuItem ctxSelDelete;
+    private MenuItem ctxSelRemove;
 
     private Node brandEmblem;
     private VBox leftColumn;
@@ -88,7 +100,7 @@ public final class WelcomeView extends BorderPane implements AutoCloseable {
         HBox brandRow = new HBox(14, brandEmblem, title);
         brandRow.setAlignment(Pos.CENTER_LEFT);
 
-        Button createBtn = new Button("Yeni Kasa Oluştur");
+        createBtn = new Button(I18n.t("Yeni Kasa Oluştur", "Create New Vault"));
         createBtn.getStyleClass().add("btn-primary");
         createBtn.setPrefHeight(44);
         createBtn.setMaxWidth(Double.MAX_VALUE);
@@ -96,18 +108,18 @@ public final class WelcomeView extends BorderPane implements AutoCloseable {
         createBtn.setOnAction(e -> onCreateVault.run());
         MotionFx.attachPressSpring(createBtn);
 
-        Button openBtn = new Button("Kasa Aç (.sapphirypt)");
+        openBtn = new Button(I18n.t("Kasa Aç (.sapphirypt)", "Open Vault (.sapphirypt)"));
         openBtn.setPrefHeight(44);
         openBtn.setMaxWidth(Double.MAX_VALUE);
         openBtn.setOnAction(e -> onOpenVault.accept(null));
         MotionFx.attachPressSpring(openBtn);
 
-        MenuItem externalRenameItem = new MenuItem("Kasa Adını Değiştir (Parola + .key)");
+        externalRenameItem = new MenuItem(I18n.t("Kasa Adını Değiştir (Parola + .key)", "Rename Vault (Password + .key)"));
         externalRenameItem.setOnAction(e -> onRenameVault.accept(null));
-        MenuItem externalDeleteItem = new MenuItem("Kasayı Kalıcı Sil (Parola + .key)");
+        externalDeleteItem = new MenuItem(I18n.t("Kasayı Kalıcı Sil (Parola + .key)", "Delete Vault Permanently (Password + .key)"));
         externalDeleteItem.setOnAction(e -> onDeleteVault.accept(null));
 
-        MenuButton manageExternalBtn = new MenuButton("Başka Kasa Yönet...", null, externalRenameItem, externalDeleteItem);
+        manageExternalBtn = new MenuButton(I18n.t("Başka Kasa Yönet...", "Manage Another Vault..."), null, externalRenameItem, externalDeleteItem);
         manageExternalBtn.getStyleClass().add("btn-ghost");
         manageExternalBtn.setMaxWidth(Double.MAX_VALUE);
 
@@ -124,7 +136,7 @@ public final class WelcomeView extends BorderPane implements AutoCloseable {
         leftColumn.setMaxWidth(405);
 
         // Right column: Recent vaults list with inline hover actions
-        Label recentHeader = new Label("SON KASALAR");
+        recentHeader = new Label(I18n.t("SON KASALAR", "RECENT VAULTS"));
         recentHeader.getStyleClass().add("section-title");
         recentCountBadge.getStyleClass().add("sapphire-badge");
 
@@ -166,7 +178,7 @@ public final class WelcomeView extends BorderPane implements AutoCloseable {
     }
 
     private void configureRecentList() {
-        Label emptyPlaceholder = new Label("Henüz açılmış veya oluşturulmuş bir kasa yok.\nSol taraftan yeni bir kasa oluşturabilir veya mevcut bir .sapphirypt dosyası açabilirsiniz.");
+        emptyPlaceholder = new Label(emptyPlaceholderText());
         emptyPlaceholder.getStyleClass().add("muted-text");
         emptyPlaceholder.setWrapText(true);
         emptyPlaceholder.setStyle("-fx-text-alignment: center; -fx-padding: 24px;");
@@ -213,31 +225,31 @@ public final class WelcomeView extends BorderPane implements AutoCloseable {
             HBox.setHgrow(infoCol, Priority.ALWAYS);
 
             if (!exists) {
-                Label missingBadge = new Label("Dosya bulunamadı");
+                Label missingBadge = new Label(I18n.t("Dosya bulunamadı", "File not found"));
                 missingBadge.getStyleClass().add("warning-badge");
                 infoCol.getChildren().add(missingBadge);
             }
 
-            Button openInlineBtn = new Button("Aç");
+            Button openInlineBtn = new Button(I18n.t("Aç", "Open"));
             openInlineBtn.getStyleClass().add("btn-primary");
             openInlineBtn.setPadding(new Insets(4, 12, 4, 12));
             openInlineBtn.setDisable(!exists);
             openInlineBtn.setOnAction(e -> onOpenVault.accept(item));
             MotionFx.attachPressSpring(openInlineBtn);
 
-            MenuItem ctxOpen = new MenuItem("Kasa Aç");
+            MenuItem ctxOpen = new MenuItem(I18n.t("Kasa Aç", "Open Vault"));
             ctxOpen.setDisable(!exists);
             ctxOpen.setOnAction(e -> onOpenVault.accept(item));
 
-            MenuItem ctxRename = new MenuItem("Adını Değiştir (Parola + .key)");
+            MenuItem ctxRename = new MenuItem(I18n.t("Adını Değiştir (Parola + .key)", "Rename (Password + .key)"));
             ctxRename.setDisable(!exists);
             ctxRename.setOnAction(e -> onRenameVault.accept(item));
 
-            MenuItem ctxDelete = new MenuItem("Kalıcı Sil (Parola + .key)");
+            MenuItem ctxDelete = new MenuItem(I18n.t("Kalıcı Sil (Parola + .key)", "Delete Permanently (Password + .key)"));
             ctxDelete.setDisable(!exists);
             ctxDelete.setOnAction(e -> onDeleteVault.accept(item));
 
-            MenuItem ctxRemove = new MenuItem("Listeden Kaldır");
+            MenuItem ctxRemove = new MenuItem(I18n.t("Listeden Kaldır", "Remove from List"));
             ctxRemove.setOnAction(e -> {
                 settings.removeRecentVault(item);
                 settings.save();
@@ -247,7 +259,7 @@ public final class WelcomeView extends BorderPane implements AutoCloseable {
             MenuButton moreBtn = new MenuButton();
             moreBtn.getStyleClass().add("icon-btn");
             moreBtn.setGraphic(SapphireIcons.moreHorizontal(15, themeManager.isDarkNow() ? "#CBD5E1" : "#334155"));
-            moreBtn.setTooltip(new Tooltip("Kasa İşlemleri"));
+            moreBtn.setTooltip(new Tooltip(I18n.t("Kasa İşlemleri", "Vault Actions")));
             moreBtn.getItems().addAll(ctxOpen, new SeparatorMenuItem(), ctxRename, ctxDelete, new SeparatorMenuItem(), ctxRemove);
 
             HBox actions = new HBox(6, openInlineBtn, moreBtn);
@@ -264,26 +276,26 @@ public final class WelcomeView extends BorderPane implements AutoCloseable {
     }
 
     private ContextMenu buildContextMenuForSelection() {
-        MenuItem openItem = new MenuItem("Aç");
-        openItem.setOnAction(e -> {
+        ctxSelOpen = new MenuItem(I18n.t("Aç", "Open"));
+        ctxSelOpen.setOnAction(e -> {
             Path sel = recentList.getSelectionModel().getSelectedItem();
             if (sel != null) onOpenVault.accept(sel);
         });
 
-        MenuItem renameItem = new MenuItem("Kasa Adını Değiştir (Parola + .key)");
-        renameItem.setOnAction(e -> {
+        ctxSelRename = new MenuItem(I18n.t("Kasa Adını Değiştir (Parola + .key)", "Rename Vault (Password + .key)"));
+        ctxSelRename.setOnAction(e -> {
             Path sel = recentList.getSelectionModel().getSelectedItem();
             if (sel != null) onRenameVault.accept(sel);
         });
 
-        MenuItem deleteItem = new MenuItem("Kasayı Sil (Parola + .key)");
-        deleteItem.setOnAction(e -> {
+        ctxSelDelete = new MenuItem(I18n.t("Kasayı Sil (Parola + .key)", "Delete Vault (Password + .key)"));
+        ctxSelDelete.setOnAction(e -> {
             Path sel = recentList.getSelectionModel().getSelectedItem();
             if (sel != null) onDeleteVault.accept(sel);
         });
 
-        MenuItem removeItem = new MenuItem("Son Listeden Kaldır");
-        removeItem.setOnAction(e -> {
+        ctxSelRemove = new MenuItem(I18n.t("Son Listeden Kaldır", "Remove from Recent List"));
+        ctxSelRemove.setOnAction(e -> {
             Path sel = recentList.getSelectionModel().getSelectedItem();
             if (sel != null) {
                 settings.removeRecentVault(sel);
@@ -293,23 +305,47 @@ public final class WelcomeView extends BorderPane implements AutoCloseable {
         });
 
         ContextMenu menu = new ContextMenu(
-                openItem, new SeparatorMenuItem(), renameItem, deleteItem, new SeparatorMenuItem(), removeItem);
+                ctxSelOpen, new SeparatorMenuItem(), ctxSelRename, ctxSelDelete, new SeparatorMenuItem(), ctxSelRemove);
         menu.setOnShowing(e -> {
             Path sel = recentList.getSelectionModel().getSelectedItem();
             boolean none = sel == null;
             boolean missing = none || !Files.isRegularFile(sel);
-            openItem.setDisable(missing);
-            renameItem.setDisable(missing);
-            deleteItem.setDisable(missing);
-            removeItem.setDisable(none);
+            ctxSelOpen.setDisable(missing);
+            ctxSelRename.setDisable(missing);
+            ctxSelDelete.setDisable(missing);
+            ctxSelRemove.setDisable(none);
         });
         return menu;
+    }
+
+    public void refreshLanguage() {
+        createBtn.setText(I18n.t("Yeni Kasa Oluştur", "Create New Vault"));
+        openBtn.setText(I18n.t("Kasa Aç (.sapphirypt)", "Open Vault (.sapphirypt)"));
+        externalRenameItem.setText(I18n.t("Kasa Adını Değiştir (Parola + .key)", "Rename Vault (Password + .key)"));
+        externalDeleteItem.setText(I18n.t("Kasayı Kalıcı Sil (Parola + .key)", "Delete Vault Permanently (Password + .key)"));
+        manageExternalBtn.setText(I18n.t("Başka Kasa Yönet...", "Manage Another Vault..."));
+        recentHeader.setText(I18n.t("SON KASALAR", "RECENT VAULTS"));
+        if (emptyPlaceholder != null) {
+            emptyPlaceholder.setText(emptyPlaceholderText());
+        }
+        if (ctxSelOpen != null) ctxSelOpen.setText(I18n.t("Aç", "Open"));
+        if (ctxSelRename != null) ctxSelRename.setText(I18n.t("Kasa Adını Değiştir (Parola + .key)", "Rename Vault (Password + .key)"));
+        if (ctxSelDelete != null) ctxSelDelete.setText(I18n.t("Kasayı Sil (Parola + .key)", "Delete Vault (Password + .key)"));
+        if (ctxSelRemove != null) ctxSelRemove.setText(I18n.t("Son Listeden Kaldır", "Remove from Recent List"));
+        refreshRecentVaults();
+        recentList.refresh();
+    }
+
+    private static String emptyPlaceholderText() {
+        return I18n.t(
+                "Henüz açılmış veya oluşturulmuş bir kasa yok.\nSol taraftan yeni bir kasa oluşturabilir veya mevcut bir .sapphirypt dosyası açabilirsiniz.",
+                "No vaults opened or created yet.\nCreate a new vault on the left or open an existing .sapphirypt file.");
     }
 
     public void refreshRecentVaults() {
         var vaults = settings.recentVaults();
         recentList.getItems().setAll(vaults);
-        recentCountBadge.setText(vaults.size() + " kasa");
+        recentCountBadge.setText(vaults.size() + I18n.t(" kasa", " vaults"));
         refreshStatusBar();
     }
 
@@ -335,8 +371,8 @@ public final class WelcomeView extends BorderPane implements AutoCloseable {
 
     private void refreshStatusBar() {
         int count = settings.recentVaults().size();
-        statusLeftLabel.setText(count + " kayıtlı kasa");
-        statusThemeLabel.setText("Tema: " + themeManager.mode().label());
+        statusLeftLabel.setText(count + I18n.t(" kayıtlı kasa", " saved vaults"));
+        statusThemeLabel.setText(I18n.t("Tema: ", "Theme: ") + I18n.themeLabel(themeManager.mode()));
     }
 
     private static Label badge(String text) {

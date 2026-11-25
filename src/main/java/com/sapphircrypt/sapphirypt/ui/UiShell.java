@@ -230,13 +230,15 @@ public final class UiShell extends StackPane {
         themeCycleBtn.setOnAction(e -> {
             themeManager.cycleMode();
             MotionFx.playIconSpin(themeCycleBtn.getGraphic());
-            showToast(ToastType.INFO, "Tema Değiştirildi", "Aktif mod: " + themeManager.mode().label());
+            showToast(ToastType.INFO,
+                    I18n.t("Tema Değiştirildi", "Theme Changed"),
+                    I18n.t("Aktif mod: ", "Active mode: ") + I18n.themeLabel(themeManager.mode()));
         });
 
         settingsBtn.getStyleClass().add("title-bar-btn");
         settingsBtn.setFocusTraversable(false);
         settingsBtn.setMinWidth(Region.USE_PREF_SIZE);
-        settingsBtn.setTooltip(new Tooltip("Ayarlar"));
+        settingsBtn.setTooltip(new Tooltip(I18n.t("Ayarlar", "Settings")));
         settingsBtn.setOnAction(e -> {
             if (onOpenSettings != null) {
                 onOpenSettings.run();
@@ -252,19 +254,19 @@ public final class UiShell extends StackPane {
         minBtn.getStyleClass().add("title-bar-btn");
         minBtn.setFocusTraversable(false);
         minBtn.setMinWidth(Region.USE_PREF_SIZE);
-        minBtn.setTooltip(new Tooltip("Küçült"));
+        minBtn.setTooltip(new Tooltip(I18n.t("Küçült", "Minimize")));
         minBtn.setOnAction(e -> stage.setIconified(true));
 
         maxBtn.getStyleClass().add("title-bar-btn");
         maxBtn.setFocusTraversable(false);
         maxBtn.setMinWidth(Region.USE_PREF_SIZE);
-        maxBtn.setTooltip(new Tooltip("Büyüt / Geri Yükle"));
+        maxBtn.setTooltip(new Tooltip(I18n.t("Büyüt / Geri Yükle", "Maximize / Restore")));
         maxBtn.setOnAction(e -> toggleMaximize());
 
         closeBtn.getStyleClass().addAll("title-bar-btn", "title-bar-close");
         closeBtn.setFocusTraversable(false);
         closeBtn.setMinWidth(Region.USE_PREF_SIZE);
-        closeBtn.setTooltip(new Tooltip("Kapat"));
+        closeBtn.setTooltip(new Tooltip(I18n.t("Kapat", "Close")));
         closeBtn.setOnAction(e -> stage.fireEvent(
                 new javafx.stage.WindowEvent(stage, javafx.stage.WindowEvent.WINDOW_CLOSE_REQUEST)));
 
@@ -385,12 +387,22 @@ public final class UiShell extends StackPane {
             case AUTO -> SapphireIcons.autoTheme(15, accentIconColor());
         };
         themeCycleBtn.setGraphic(themeGraphic);
-        themeCycleBtn.setTooltip(new Tooltip("Tema: " + mode.label() + " (değiştirmek için tıklayın)"));
+        themeCycleBtn.setTooltip(new Tooltip(
+                I18n.t("Tema: ", "Theme: ") + I18n.themeLabel(mode)
+                        + I18n.t(" (değiştirmek için tıklayın)", " (click to switch)")));
 
         settingsBtn.setGraphic(SapphireIcons.settings(15, iconCol));
         minBtn.setGraphic(SapphireIcons.minimize(14, iconCol));
         maxBtn.setGraphic(maximized ? SapphireIcons.restore(14, iconCol) : SapphireIcons.maximize(14, iconCol));
         closeBtn.setGraphic(SapphireIcons.close(14, iconCol));
+    }
+
+    public void refreshLanguage() {
+        settingsBtn.setTooltip(new Tooltip(I18n.t("Ayarlar", "Settings")));
+        minBtn.setTooltip(new Tooltip(I18n.t("Küçült", "Minimize")));
+        maxBtn.setTooltip(new Tooltip(I18n.t("Büyüt / Geri Yükle", "Maximize / Restore")));
+        closeBtn.setTooltip(new Tooltip(I18n.t("Kapat", "Close")));
+        refreshChromeIcons();
     }
 
     public void toggleMaximize() {
@@ -460,7 +472,7 @@ public final class UiShell extends StackPane {
         Button drawerCloseBtn = new Button();
         drawerCloseBtn.getStyleClass().add("icon-btn");
         drawerCloseBtn.setGraphic(SapphireIcons.close(15, iconColor()));
-        drawerCloseBtn.setTooltip(new Tooltip("Kapat (Esc)"));
+        drawerCloseBtn.setTooltip(new Tooltip(I18n.t("Kapat (Esc)", "Close (Esc)")));
         drawerCloseBtn.setOnAction(e -> closeDrawer());
 
         Region hSpacer = new Region();
@@ -581,8 +593,8 @@ public final class UiShell extends StackPane {
 
         Label msgLbl = bodyLabel(message);
 
-        Button cancelBtn = new Button("Vazgeç");
-        Button confirmBtn = new Button(confirmLabel != null ? confirmLabel : "Onayla");
+        Button cancelBtn = new Button(I18n.t("Vazgeç", "Cancel"));
+        Button confirmBtn = new Button(confirmLabel != null ? confirmLabel : I18n.t("Onayla", "Confirm"));
         confirmBtn.getStyleClass().add(danger ? "btn-danger" : "btn-primary");
 
         HBox actions = new HBox(10, cancelBtn, confirmBtn);
@@ -607,11 +619,11 @@ public final class UiShell extends StackPane {
         VBox card = createOverlayCard(500);
         HBox titleRow = new HBox(10,
                 SapphireIcons.warning(20, "#F87171"),
-                headingLabel(title != null ? title : "İşlem Hatası"));
+                headingLabel(title != null ? title : I18n.t("İşlem Hatası", "Operation Error")));
         titleRow.setAlignment(Pos.CENTER_LEFT);
 
         Label msgLbl = bodyLabel(userMessage == null || userMessage.isBlank()
-                ? "Beklenmeyen bir hata oluştu." : userMessage);
+                ? I18n.t("Beklenmeyen bir hata oluştu.", "An unexpected error occurred.") : userMessage);
 
         card.getChildren().addAll(titleRow, msgLbl);
 
@@ -626,29 +638,33 @@ public final class UiShell extends StackPane {
             traceArea.setVisible(false);
             traceArea.setManaged(false);
 
-            Button detailsBtn = new Button("Teknik Ayrıntıları Göster");
+            Button detailsBtn = new Button(I18n.t("Teknik Ayrıntıları Göster", "Show Technical Details"));
             detailsBtn.getStyleClass().add("btn-ghost");
             detailsBtn.setOnAction(e -> {
                 boolean show = !traceArea.isVisible();
                 traceArea.setVisible(show);
                 traceArea.setManaged(show);
-                detailsBtn.setText(show ? "Teknik Ayrıntıları Gizle" : "Teknik Ayrıntıları Göster");
+                detailsBtn.setText(show
+                        ? I18n.t("Teknik Ayrıntıları Gizle", "Hide Technical Details")
+                        : I18n.t("Teknik Ayrıntıları Göster", "Show Technical Details"));
             });
 
-            Button copyBtn = new Button("Kopyala");
+            Button copyBtn = new Button(I18n.t("Kopyala", "Copy"));
             copyBtn.getStyleClass().add("btn-ghost");
             copyBtn.setOnAction(e -> {
                 ClipboardContent cc = new ClipboardContent();
                 cc.putString(sw.toString());
                 Clipboard.getSystemClipboard().setContent(cc);
-                showToast(ToastType.INFO, "Kopyalandı", "Hata ayrıntısı panoya kopyalandı.");
+                showToast(ToastType.INFO,
+                        I18n.t("Kopyalandı", "Copied"),
+                        I18n.t("Hata ayrıntısı panoya kopyalandı.", "Error details copied to clipboard."));
             });
 
             HBox toolsRow = new HBox(8, detailsBtn, copyBtn);
             card.getChildren().addAll(toolsRow, traceArea);
         }
 
-        Button closeOverlayBtn = new Button("Tamam");
+        Button closeOverlayBtn = new Button(I18n.t("Tamam", "OK"));
         closeOverlayBtn.getStyleClass().add("btn-primary");
         closeOverlayBtn.setOnAction(e -> hideOverlay());
         HBox actions = new HBox(closeOverlayBtn);
@@ -680,8 +696,8 @@ public final class UiShell extends StackPane {
         errLbl.setVisible(false);
         errLbl.setManaged(false);
 
-        Button cancelBtn = new Button("İptal");
-        Button okBtn = new Button(confirmLabel != null ? confirmLabel : "Kaydet");
+        Button cancelBtn = new Button(I18n.t("İptal", "Cancel"));
+        Button okBtn = new Button(confirmLabel != null ? confirmLabel : I18n.t("Kaydet", "Save"));
         okBtn.getStyleClass().add("btn-primary");
 
         Runnable cancelAction = () -> {
@@ -691,7 +707,7 @@ public final class UiShell extends StackPane {
         Runnable submitAction = () -> {
             String trimmed = input.getText() == null ? "" : input.getText().trim();
             if (trimmed.isEmpty()) {
-                errLbl.setText("Bu alan boş bırakılamaz.");
+                errLbl.setText(I18n.t("Bu alan boş bırakılamaz.", "This field cannot be empty."));
                 errLbl.setVisible(true);
                 errLbl.setManaged(true);
                 MotionFx.playErrorShake(errLbl);
@@ -723,21 +739,27 @@ public final class UiShell extends StackPane {
 
         HBox titleRow = new HBox(10,
                 SapphireIcons.warning(20, "#FBBF24"),
-                headingLabel("İsim Çakışması"));
+                headingLabel(I18n.t("İsim Çakışması", "Name Conflict")));
         titleRow.setAlignment(Pos.CENTER_LEFT);
 
         String noteText;
         if (existingIsFolder) {
-            noteText = "Hedef klasörde \"" + conflictingName + "\" adlı bir klasör zaten var. Üzerine yazılamaz; yeni ad verebilir veya iptal edebilirsiniz.";
+            noteText = I18n.t(
+                    "Hedef klasörde \"" + conflictingName + "\" adlı bir klasör zaten var. Üzerine yazılamaz; yeni ad verebilir veya iptal edebilirsiniz.",
+                    "A folder named \"" + conflictingName + "\" already exists in the destination. Folders cannot be overwritten; rename or cancel.");
         } else if (!allowOverwrite) {
-            noteText = "Hedef klasörde \"" + conflictingName + "\" adlı bir öğe zaten var. Kopyalama için yeni ad verebilir veya iptal edebilirsiniz.";
+            noteText = I18n.t(
+                    "Hedef klasörde \"" + conflictingName + "\" adlı bir öğe zaten var. Kopyalama için yeni ad verebilir veya iptal edebilirsiniz.",
+                    "An item named \"" + conflictingName + "\" already exists in the destination. Enter a new name or cancel.");
         } else {
-            noteText = "Hedef klasörde \"" + conflictingName + "\" zaten var. Üzerine yazarsanız mevcut dosya yeni dosya ile güncellenir.";
+            noteText = I18n.t(
+                    "Hedef klasörde \"" + conflictingName + "\" zaten var. Üzerine yazarsanız mevcut dosya yeni dosya ile güncellenir.",
+                    "\"" + conflictingName + "\" already exists in the destination. Overwriting replaces the existing file.");
         }
         Label msgLbl = bodyLabel(noteText);
 
         TextField newNameField = new TextField(conflictingName);
-        newNameField.setPromptText("Yeni ad girin");
+        newNameField.setPromptText(I18n.t("Yeni ad girin", "Enter a new name"));
 
         Label errLbl = new Label();
         errLbl.getStyleClass().add("inline-error-banner");
@@ -746,8 +768,8 @@ public final class UiShell extends StackPane {
         errLbl.setVisible(false);
         errLbl.setManaged(false);
 
-        Button cancelBtn = new Button("İptal");
-        Button renameBtn = new Button("Yeniden Adlandır");
+        Button cancelBtn = new Button(I18n.t("İptal", "Cancel"));
+        Button renameBtn = new Button(I18n.t("Yeniden Adlandır", "Rename"));
         renameBtn.getStyleClass().add("btn-primary");
 
         HBox actions = new HBox(8, cancelBtn, renameBtn);
@@ -763,7 +785,7 @@ public final class UiShell extends StackPane {
             String candidate = newNameField.getText() == null ? "" : newNameField.getText().trim();
             if (candidate.isEmpty() || candidate.equalsIgnoreCase(conflictingName)
                     || candidate.indexOf('/') >= 0 || candidate.indexOf('\\') >= 0) {
-                errLbl.setText("Lütfen mevcut isimden farklı ve geçerli bir ad girin.");
+                errLbl.setText(I18n.t("Lütfen mevcut isimden farklı ve geçerli bir ad girin.", "Please enter a valid name different from the existing one."));
                 errLbl.setVisible(true);
                 errLbl.setManaged(true);
                 MotionFx.playErrorShake(errLbl);
@@ -776,7 +798,7 @@ public final class UiShell extends StackPane {
         newNameField.setOnAction(e -> submitRename.run());
 
         if (allowOverwrite && !existingIsFolder) {
-            Button overwriteBtn = new Button("Üzerine Yaz");
+            Button overwriteBtn = new Button(I18n.t("Üzerine Yaz", "Overwrite"));
             overwriteBtn.getStyleClass().add("btn-danger");
             overwriteBtn.setOnAction(e -> {
                 hideOverlay();
@@ -785,7 +807,7 @@ public final class UiShell extends StackPane {
             actions.getChildren().add(1, overwriteBtn);
         }
 
-        card.getChildren().addAll(titleRow, msgLbl, bodyLabel("Yeniden adlandırma için yeni ad:"), newNameField, errLbl, actions);
+        card.getChildren().addAll(titleRow, msgLbl, bodyLabel(I18n.t("Yeniden adlandırma için yeni ad:", "New name for renaming:")), newNameField, errLbl, actions);
         showOverlayCard(card, completeCancel);
         Platform.runLater(() -> {
             newNameField.requestFocus();
@@ -816,6 +838,18 @@ public final class UiShell extends StackPane {
         lbl.setWrapText(true);
         lbl.setStyle("-fx-font-size: 13px;");
         return lbl;
+    }
+
+    public void showCustomOverlay(Node content, Runnable onEscape) {
+        if (content == null) {
+            return;
+        }
+        Runnable escapeHandler = onEscape != null ? onEscape : this::hideOverlay;
+        showOverlayCard(content, escapeHandler);
+    }
+
+    public void dismissOverlay() {
+        hideOverlay();
     }
 
     private void showOverlayCard(Node card, Runnable onEscape) {

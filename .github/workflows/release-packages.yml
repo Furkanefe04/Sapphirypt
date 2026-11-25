@@ -1,0 +1,94 @@
+name: Release Packages
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 22
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "22"
+
+      - name: Ensure WiX Toolset 3.x is available
+        shell: pwsh
+        run: |
+          if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue)) {
+            if ($env:WIX -and (Test-Path (Join-Path $env:WIX "bin\candle.exe"))) {
+              (Join-Path $env:WIX "bin") | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+            } else {
+              choco install wixtoolset -y --no-progress
+              $candle = Get-ChildItem "${env:ProgramFiles(x86)}\WiX Toolset*" -Filter "candle.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+              if ($candle) {
+                $candle.Directory.FullName | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+              }
+            }
+          }
+
+      - name: Build & test Windows packages
+        shell: pwsh
+        run: .\gradlew.bat test packageWindowsExe packageWindowsInstaller packageWindowsMsi
+
+      - name: Archive portable Windows bundle and generate SHA-256 checksums
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "build/distributions/windows/Sapphirypt" -DestinationPath "build/distributions/Sapphirypt-windows-portable.zip" -Force
+          .\gradlew.bat sha256Checksums
+
+      - name: Upload Windows artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sapphirypt-windows-packages
+          path: |
+            build/distributions/windows-installer/*
+            build/distributions/windows-msi/*
+            build/distributions/Sapphirypt-windows-portable.zip
+            build/distributions/*.sha256
+            build/distributions/*/*.sha256
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 22
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "22"
+
+      - name: Install Linux packaging tools (fakeroot & rpm)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y fakeroot rpm
+
+      - name: Build & test Linux packages
+        run: |
+          chmod +x gradlew
+          ./gradlew test packageLinuxApp packageLinuxDeb packageLinuxRpm
+
+      - name: Archive portable Linux bundle and generate SHA-256 checksums
+        run: |
+          tar -czf build/distributions/Sapphirypt-linux-portable.tar.gz -C build/distributions/linux Sapphirypt
+          ./gradlew sha256Checksums
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sapphirypt-linux-packages
+          path: |
+            build/distributions/linux-deb/*
+            build/distributions/linux-rpm/*
+            build/distributions/Sapphirypt-linux-portable.tar.gz
+            build/distributions/*.sha256
+            build/distributions/*/*.sha256

@@ -14,6 +14,7 @@ import com.sapphircrypt.sapphirypt.format.VaultHeader;
 import com.sapphircrypt.sapphirypt.format.VaultMetadata;
 import com.sapphircrypt.sapphirypt.format.VaultMetadata.BlockRef;
 import com.sapphircrypt.sapphirypt.format.VaultMetadata.EntryType;
+import com.sapphircrypt.sapphirypt.format.VaultMetadata.FileVersion;
 import com.sapphircrypt.sapphirypt.format.VaultMetadata.StorageStats;
 import com.sapphircrypt.sapphirypt.format.VaultMetadata.VaultEntry;
 
@@ -531,7 +532,7 @@ public final class VaultSession implements AutoCloseable {
             if (collision.isPresent() && !collision.get().id().equals(entryId)) {
                 throw new VaultException("Bu isimde başka bir öğe zaten mevcut: " + validName);
             }
-            VaultEntry updated = new VaultEntry(existing.id(), existing.parentId(), existing.type(), validName, existing.createdAt(), System.currentTimeMillis(), existing.logicalSize(), existing.blocks());
+            VaultEntry updated = new VaultEntry(existing.id(), existing.parentId(), existing.type(), validName, existing.createdAt(), System.currentTimeMillis(), existing.logicalSize(), existing.blocks(), existing.favorite(), existing.tags(), existing.versions());
             working.putEntry(updated);
             commitMetadataLocked(working);
             return updated;
@@ -558,7 +559,7 @@ public final class VaultSession implements AutoCloseable {
             if (working.findChildByName(targetParentId, existing.name()).isPresent()) {
                 throw new VaultException("Hedef klasörde aynı isimde bir öğe zaten var: " + existing.name());
             }
-            VaultEntry moved = new VaultEntry(existing.id(), targetParentId, existing.type(), existing.name(), existing.createdAt(), System.currentTimeMillis(), existing.logicalSize(), existing.blocks());
+            VaultEntry moved = new VaultEntry(existing.id(), targetParentId, existing.type(), existing.name(), existing.createdAt(), System.currentTimeMillis(), existing.logicalSize(), existing.blocks(), existing.favorite(), existing.tags(), existing.versions());
             working.putEntry(moved);
             commitMetadataLocked(working);
             return moved;
@@ -596,7 +597,7 @@ public final class VaultSession implements AutoCloseable {
             VaultMetadata working, VaultEntry source, UUID newParentId, String newName) {
         long now = System.currentTimeMillis();
         UUID newId = UUID.randomUUID();
-        VaultEntry copy = new VaultEntry(newId, newParentId, source.type(), newName, now, now, source.logicalSize(), source.blocks());
+        VaultEntry copy = new VaultEntry(newId, newParentId, source.type(), newName, now, now, source.logicalSize(), source.blocks(), source.favorite(), source.tags(), List.of());
         working.putEntry(copy);
         if (source.isFolder()) {
             for (VaultEntry child : working.listChildren(source.id())) {
@@ -604,6 +605,150 @@ public final class VaultSession implements AutoCloseable {
             }
         }
         return copy;
+    }
+
+    public VaultEntry setFavorite(UUID entryId, boolean favorite) throws VaultException, IOException {
+        if (entryId == null || VaultMetadata.ROOT_ID.equals(entryId)) {
+            throw new VaultException("Kök klasör favorilere eklenemez");
+        }
+        stateLock.writeLock().lock();
+        try {
+            ensureOpen();
+            VaultMetadata working = metadata.copyMutable();
+            VaultEntry existing = working.getEntry(entryId).orElseThrow(() -> new VaultException("Öğe bulunamadı"));
+            if (existing.favorite() == favorite) {
+                return existing;
+            }
+            VaultEntry updated = existing.withFavorite(favorite);
+            working.putEntry(updated);
+            commitMetadataLocked(working);
+            return updated;
+        } finally {
+            stateLock.writeLock().unlock();
+        }
+    }
+
+    public VaultEntry setTags(UUID entryId, Collection<String> tags) throws VaultException, IOException {
+        if (entryId == null || VaultMetadata.ROOT_ID.equals(entryId)) {
+            throw new VaultException("Kök klasör etiketlenemez");
+        }
+        stateLock.writeLock().lock();
+        try {
+            ensureOpen();
+            VaultMetadata working = metadata.copyMutable();
+            VaultEntry existing = working.getEntry(entryId).orElseThrow(() -> new VaultException("Öğe bulunamadı"));
+            VaultEntry updated = existing.withTags(tags);
+            if (updated.tags().equals(existing.tags())) {
+                return existing;
+            }
+            working.putEntry(updated);
+            commitMetadataLocked(working);
+            return updated;
+        } finally {
+            stateLock.writeLock().unlock();
+        }
+    }
+
+    public VaultEntry restoreFileVersion(UUID entryId, UUID versionId) throws VaultException, IOException {
+        if (entryId == null || versionId == null || VaultMetadata.ROOT_ID.equals(entryId)) {
+            throw new VaultException("Geçersiz dosya veya sürüm seçimi");
+        }
+        stateLock.writeLock().lock();
+        try {
+            ensureOpen();
+            VaultMetadata working = metadata.copyMutable();
+            VaultEntry existing = working.getEntry(entryId).orElseThrow(() -> new VaultException("Dosya bulunamadı"));
+            if (!existing.isFile()) {
+                throw new VaultException("Yalnızca dosyaların sürüm geçmişi geri yüklenebilir");
+            }
+            FileVersion targetVersion = null;
+            for (FileVersion ver : existing.versions()) {
+                if (versionId.equals(ver.versionId())) {
+                    targetVersion = ver;
+                    break;
+                }
+            }
+            if (targetVersion == null) {
+                throw new VaultException("Geri yüklenecek sürüm bulunamadı");
+            }
+
+            List<FileVersion> nextVersions = new ArrayList<>(Math.min(VaultMetadata.MAX_FILE_VERSIONS, existing.versions().size()));
+            nextVersions.add(new FileVersion(UUID.randomUUID(), existing.modifiedAt(), existing.logicalSize(), existing.blocks()));
+            for (FileVersion ver : existing.versions()) {
+                if (!versionId.equals(ver.versionId()) && nextVersions.size() < VaultMetadata.MAX_FILE_VERSIONS) {
+                    nextVersions.add(ver);
+                }
+            }
+
+            VaultEntry restored = new VaultEntry(
+                    existing.id(),
+                    existing.parentId(),
+                    EntryType.FILE,
+                    existing.name(),
+                    existing.createdAt(),
+                    System.currentTimeMillis(),
+                    targetVersion.logicalSize(),
+                    targetVersion.blocks(),
+                    existing.favorite(),
+                    existing.tags(),
+                    nextVersions);
+            working.putEntry(restored);
+            commitMetadataLocked(working);
+            return restored;
+        } finally {
+            stateLock.writeLock().unlock();
+        }
+    }
+
+    public VaultEntry deleteFileVersion(UUID entryId, UUID versionId) throws VaultException, IOException {
+        if (entryId == null || versionId == null || VaultMetadata.ROOT_ID.equals(entryId)) {
+            throw new VaultException("Geçersiz dosya veya sürüm seçimi");
+        }
+        stateLock.writeLock().lock();
+        try {
+            ensureOpen();
+            VaultMetadata working = metadata.copyMutable();
+            VaultEntry existing = working.getEntry(entryId).orElseThrow(() -> new VaultException("Dosya bulunamadı"));
+            List<FileVersion> filtered = new ArrayList<>(existing.versions().size());
+            boolean removed = false;
+            for (FileVersion ver : existing.versions()) {
+                if (versionId.equals(ver.versionId())) {
+                    removed = true;
+                } else {
+                    filtered.add(ver);
+                }
+            }
+            if (!removed) {
+                return existing;
+            }
+            VaultEntry updated = existing.withVersions(filtered);
+            working.putEntry(updated);
+            commitMetadataLocked(working);
+            return updated;
+        } finally {
+            stateLock.writeLock().unlock();
+        }
+    }
+
+    public VaultEntry clearFileVersions(UUID entryId) throws VaultException, IOException {
+        if (entryId == null || VaultMetadata.ROOT_ID.equals(entryId)) {
+            throw new VaultException("Geçersiz dosya seçimi");
+        }
+        stateLock.writeLock().lock();
+        try {
+            ensureOpen();
+            VaultMetadata working = metadata.copyMutable();
+            VaultEntry existing = working.getEntry(entryId).orElseThrow(() -> new VaultException("Dosya bulunamadı"));
+            if (existing.versions().isEmpty()) {
+                return existing;
+            }
+            VaultEntry updated = existing.withVersions(List.of());
+            working.putEntry(updated);
+            commitMetadataLocked(working);
+            return updated;
+        } finally {
+            stateLock.writeLock().unlock();
+        }
     }
 
     public void deleteEntries(Collection<UUID> entryIds) throws VaultException, IOException {
@@ -704,34 +849,8 @@ public final class VaultSession implements AutoCloseable {
                     }
                     totalRead += readInChunk;
 
-                    BlockRef prevRef = reusableByIndex.get(blockIndex);
-                    byte[] precomputedSha = (prevRef != null && prevRef.plaintextLength() == readInChunk)
-                            ? SensitiveBytes.sha256(exactChunk)
-                            : null;
-                    if (precomputedSha != null && SensitiveBytes.constantTimeEquals(prevRef.plaintextSha256(), precomputedSha)) {
-                        SensitiveBytes.wipe(exactChunk);
-                        window.addLast(new PendingReusedChunk(blockIndex, readInChunk, prevRef));
-                    } else {
-                        UUID blockId = UUID.randomUUID();
-                        long nonceCounter = nonceLeaseManager.nextDataCounter();
-                        long recordSeq = working.allocateRecordSequence();
-                        int currentIdx = blockIndex;
-                        int ptLen = readInChunk;
-                        Future<PreparedBlock> future = workerPool.submit(effectiveCancel, buffers -> {
-                            try {
-                                effectiveCancel.throwIfCancelled();
-                                byte[] blockSha = precomputedSha != null ? precomputedSha : SensitiveBytes.sha256(exactChunk);
-                                byte[] nonce = AesGcmCipher.buildCounterNonce(header.dataNoncePrefix(), nonceCounter);
-                                byte[] aad = AadBuilder.forDataBlock(header.formatVersion(), header.containerId(), blockId, currentIdx, nonceCounter, ptLen, recordSeq);
-                                int ctLen = AesGcmCipher.encryptInto(keys.dataKey(), nonce, exactChunk, 0, ptLen, aad, buffers.ciphertext, 0);
-                                byte[] framed = RecordFrame.encodeDataBlock(recordSeq, blockId, currentIdx, ptLen, nonceCounter, buffers.ciphertext, 0, ctLen);
-                                return new PreparedBlock(blockId, currentIdx, ptLen, nonceCounter, recordSeq, blockSha, framed);
-                            } finally {
-                                SensitiveBytes.wipe(exactChunk);
-                            }
-                        });
-                        window.addLast(new PendingEncryptedChunk(currentIdx, ptLen, future));
-                    }
+                    window.addLast(submitOrReuseChunk(
+                            working, reusableByIndex, blockIndex, exactChunk, effectiveCancel));
 
                     while (window.size() >= windowCap) {
                         completedBytes += flushHeadPendingChunk(window.removeFirst(), newBlocks, effectiveCancel);
@@ -757,19 +876,161 @@ public final class VaultSession implements AutoCloseable {
             }
             effectiveCancel.throwIfCancelled();
 
-            long now = System.currentTimeMillis();
-            UUID fileId = existingFile != null ? existingFile.id() : UUID.randomUUID();
-            long createdAt = existingFile != null ? existingFile.createdAt() : now;
-            VaultEntry fileEntry = new VaultEntry(fileId, targetFolderId, EntryType.FILE, effectiveName, createdAt, now, initialSize, newBlocks);
-            working.putEntry(fileEntry);
-            effectiveProgress.onProgress(initialSize, Math.max(1L, initialSize), effectiveName + " diske kaydediliyor...");
-            commitMetadataLocked(working);
+            VaultEntry fileEntry = buildAndCommitFileEntryLocked(
+                    working, targetFolderId, effectiveName, existingFile, initialSize, newBlocks);
             effectiveProgress.onProgress(initialSize, Math.max(1L, initialSize), effectiveName + " tamamlandı");
             return fileEntry;
         } finally {
             stateLock.writeLock().unlock();
             activeTokens.remove(effectiveCancel);
         }
+    }
+
+    /**
+     * Encrypts and stores an in-memory plaintext payload directly into the vault without touching disk.
+     * Preserves favorites, tags, and archives prior versions when overwriting an existing file.
+     */
+    public VaultEntry writeFileBytes(
+            UUID targetFolderId,
+            String targetName,
+            byte[] plaintext,
+            boolean overwrite,
+            CancellationToken cancel) throws VaultException, IOException {
+        String effectiveName = validateEntryName(targetName);
+        byte[] data = plaintext == null ? new byte[0] : plaintext;
+        CancellationToken effectiveCancel = cancel == null ? CancellationToken.NONE : cancel;
+
+        activeTokens.add(effectiveCancel);
+        stateLock.writeLock().lock();
+        try {
+            ensureOpen();
+            effectiveCancel.throwIfCancelled();
+
+            VaultMetadata working = metadata.copyMutable();
+            ensureFolderExists(working, targetFolderId);
+
+            Optional<VaultEntry> existingOpt = working.findChildByName(targetFolderId, effectiveName);
+            VaultEntry existingFile = null;
+            if (existingOpt.isPresent()) {
+                if (existingOpt.get().isFolder()) {
+                    throw new VaultException("Hedef konumda aynı isimde bir klasör zaten mevcut: " + effectiveName);
+                }
+                if (!overwrite) {
+                    throw new VaultException("Hedef konumda aynı isimde bir dosya zaten mevcut: " + effectiveName);
+                }
+                existingFile = existingOpt.get();
+            }
+
+            long totalSize = data.length;
+            long estimatedBlocks = (totalSize + VaultConstants.MAX_BLOCK_PLAINTEXT_SIZE - 1L) / VaultConstants.MAX_BLOCK_PLAINTEXT_SIZE;
+            nonceLeaseManager.ensureDataLeaseFor(estimatedBlocks);
+            Map<Integer, BlockRef> reusableByIndex = new HashMap<>();
+            if (existingFile != null) {
+                for (BlockRef ref : existingFile.blocks()) {
+                    reusableByIndex.put(ref.blockIndex(), ref);
+                }
+            }
+
+            List<BlockRef> newBlocks = new ArrayList<>();
+            Deque<PendingImportChunk> window = new ArrayDeque<>();
+            int windowCap = Math.max(2, workerPool.maxInFlight());
+
+            try {
+                int offset = 0;
+                int blockIndex = 0;
+                while (offset < data.length) {
+                    effectiveCancel.throwIfCancelled();
+                    int len = Math.min(VaultConstants.MAX_BLOCK_PLAINTEXT_SIZE, data.length - offset);
+                    byte[] chunkCopy = Arrays.copyOfRange(data, offset, offset + len);
+                    window.addLast(submitOrReuseChunk(
+                            working, reusableByIndex, blockIndex, chunkCopy, effectiveCancel));
+                    while (window.size() >= windowCap) {
+                        flushHeadPendingChunk(window.removeFirst(), newBlocks, effectiveCancel);
+                    }
+                    offset += len;
+                    blockIndex++;
+                }
+                while (!window.isEmpty()) {
+                    flushHeadPendingChunk(window.removeFirst(), newBlocks, effectiveCancel);
+                }
+            } catch (Exception e) {
+                cancelPendingFutures(window);
+                throw e;
+            }
+
+            effectiveCancel.throwIfCancelled();
+            return buildAndCommitFileEntryLocked(
+                    working, targetFolderId, effectiveName, existingFile, totalSize, newBlocks);
+        } finally {
+            stateLock.writeLock().unlock();
+            activeTokens.remove(effectiveCancel);
+        }
+    }
+
+    private PendingImportChunk submitOrReuseChunk(
+            VaultMetadata working,
+            Map<Integer, BlockRef> reusableByIndex,
+            int blockIndex,
+            byte[] exactChunk,
+            CancellationToken effectiveCancel) throws VaultException, IOException {
+        int readInChunk = exactChunk.length;
+        BlockRef prevRef = reusableByIndex.get(blockIndex);
+        byte[] precomputedSha = (prevRef != null && prevRef.plaintextLength() == readInChunk)
+                ? SensitiveBytes.sha256(exactChunk)
+                : null;
+        if (precomputedSha != null && SensitiveBytes.constantTimeEquals(prevRef.plaintextSha256(), precomputedSha)) {
+            SensitiveBytes.wipe(exactChunk);
+            return new PendingReusedChunk(blockIndex, readInChunk, prevRef);
+        }
+        UUID blockId = UUID.randomUUID();
+        long nonceCounter = nonceLeaseManager.nextDataCounter();
+        long recordSeq = working.allocateRecordSequence();
+        Future<PreparedBlock> future = workerPool.submit(effectiveCancel, buffers -> {
+            try {
+                effectiveCancel.throwIfCancelled();
+                byte[] blockSha = precomputedSha != null ? precomputedSha : SensitiveBytes.sha256(exactChunk);
+                byte[] nonce = AesGcmCipher.buildCounterNonce(header.dataNoncePrefix(), nonceCounter);
+                byte[] aad = AadBuilder.forDataBlock(header.formatVersion(), header.containerId(), blockId, blockIndex, nonceCounter, readInChunk, recordSeq);
+                int ctLen = AesGcmCipher.encryptInto(keys.dataKey(), nonce, exactChunk, 0, readInChunk, aad, buffers.ciphertext, 0);
+                byte[] framed = RecordFrame.encodeDataBlock(recordSeq, blockId, blockIndex, readInChunk, nonceCounter, buffers.ciphertext, 0, ctLen);
+                return new PreparedBlock(blockId, blockIndex, readInChunk, nonceCounter, recordSeq, blockSha, framed);
+            } finally {
+                SensitiveBytes.wipe(exactChunk);
+            }
+        });
+        return new PendingEncryptedChunk(blockIndex, readInChunk, future);
+    }
+
+    private VaultEntry buildAndCommitFileEntryLocked(
+            VaultMetadata working,
+            UUID targetFolderId,
+            String effectiveName,
+            VaultEntry existingFile,
+            long logicalSize,
+            List<BlockRef> newBlocks) throws IOException {
+        long now = System.currentTimeMillis();
+        UUID fileId = existingFile != null ? existingFile.id() : UUID.randomUUID();
+        long createdAt = existingFile != null ? existingFile.createdAt() : now;
+        boolean keepFavorite = false;
+        List<String> keepTags = List.of();
+        List<FileVersion> updatedVersions = List.of();
+        if (existingFile != null) {
+            keepFavorite = existingFile.favorite();
+            keepTags = existingFile.tags();
+            List<FileVersion> history = new ArrayList<>(Math.min(VaultMetadata.MAX_FILE_VERSIONS, existingFile.versions().size() + 1));
+            history.add(new FileVersion(UUID.randomUUID(), existingFile.modifiedAt(), existingFile.logicalSize(), existingFile.blocks()));
+            for (FileVersion prevVer : existingFile.versions()) {
+                if (history.size() >= VaultMetadata.MAX_FILE_VERSIONS) {
+                    break;
+                }
+                history.add(prevVer);
+            }
+            updatedVersions = List.copyOf(history);
+        }
+        VaultEntry fileEntry = new VaultEntry(fileId, targetFolderId, EntryType.FILE, effectiveName, createdAt, now, logicalSize, newBlocks, keepFavorite, keepTags, updatedVersions);
+        working.putEntry(fileEntry);
+        commitMetadataLocked(working);
+        return fileEntry;
     }
 
     private int flushHeadPendingChunk(PendingImportChunk pending, List<BlockRef> outRefs, CancellationToken cancel) throws VaultException, IOException {
@@ -864,9 +1125,6 @@ public final class VaultSession implements AutoCloseable {
 
         activeTokens.add(effectiveCancel);
         stateLock.readLock().lock();
-        Path partFile = destinationFile.toAbsolutePath().normalize()
-                .resolveSibling(destinationFile.getFileName().toString() + ".sapphirypt.part");
-        boolean success = false;
         try {
             ensureOpen();
             effectiveCancel.throwIfCancelled();
@@ -875,13 +1133,68 @@ public final class VaultSession implements AutoCloseable {
             if (!entry.isFile()) {
                 throw new VaultException("Seçilen öğe bir dosya değil: " + entry.name());
             }
+            exportBlocksLocked(entry.name(), entry.logicalSize(), entry.blocks(), destinationFile, effectiveCancel, effectiveProgress);
+        } finally {
+            stateLock.readLock().unlock();
+            activeTokens.remove(effectiveCancel);
+        }
+    }
 
+    public void exportFileVersion(
+            UUID entryId,
+            UUID versionId,
+            Path destinationFile,
+            CancellationToken cancel,
+            ProgressListener progress) throws VaultException, IOException {
+        Objects.requireNonNull(destinationFile, "destinationFile");
+        Objects.requireNonNull(versionId, "versionId");
+        CancellationToken effectiveCancel = cancel == null ? CancellationToken.NONE : cancel;
+        ProgressListener effectiveProgress = progress == null ? ProgressListener.NO_OP : progress;
+
+        activeTokens.add(effectiveCancel);
+        stateLock.readLock().lock();
+        try {
+            ensureOpen();
+            effectiveCancel.throwIfCancelled();
+
+            VaultEntry entry = metadata.getEntry(entryId).orElseThrow(() -> new VaultException("Dışa aktarılacak dosya bulunamadı"));
+            if (!entry.isFile()) {
+                throw new VaultException("Seçilen öğe bir dosya değil: " + entry.name());
+            }
+            FileVersion targetVersion = null;
+            for (FileVersion ver : entry.versions()) {
+                if (versionId.equals(ver.versionId())) {
+                    targetVersion = ver;
+                    break;
+                }
+            }
+            if (targetVersion == null) {
+                throw new VaultException("Seçilen dosya sürümü bulunamadı");
+            }
+            exportBlocksLocked(entry.name(), targetVersion.logicalSize(), targetVersion.blocks(), destinationFile, effectiveCancel, effectiveProgress);
+        } finally {
+            stateLock.readLock().unlock();
+            activeTokens.remove(effectiveCancel);
+        }
+    }
+
+    private void exportBlocksLocked(
+            String displayName,
+            long totalSize,
+            List<BlockRef> rawBlocks,
+            Path destinationFile,
+            CancellationToken effectiveCancel,
+            ProgressListener effectiveProgress) throws VaultException, IOException {
+        Path partFile = destinationFile.toAbsolutePath().normalize()
+                .resolveSibling(destinationFile.getFileName().toString() + ".sapphirypt.part");
+        boolean success = false;
+        try {
             Path parent = destinationFile.toAbsolutePath().getParent();
             if (parent != null) {
                 Files.createDirectories(parent);
             }
 
-            List<BlockRef> blocks = new ArrayList<>(entry.blocks());
+            List<BlockRef> blocks = new ArrayList<>(rawBlocks);
             blocks.sort(Comparator.comparingInt(BlockRef::blockIndex));
             for (int i = 0; i < blocks.size(); i++) {
                 if (blocks.get(i).blockIndex() != i) {
@@ -890,7 +1203,6 @@ public final class VaultSession implements AutoCloseable {
             }
 
             try (FileChannel outChannel = FileChannel.open(partFile, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING, StandardOpenOption.WRITE)) {
-                long totalSize = entry.logicalSize();
                 long writtenBytes = 0L;
 
                 if (blocks.size() <= 1) {
@@ -900,7 +1212,7 @@ public final class VaultSession implements AutoCloseable {
                         try {
                             RecordFrame.writeFully(outChannel, writtenBytes, ByteBuffer.wrap(pt));
                             writtenBytes += pt.length;
-                            effectiveProgress.onProgress(writtenBytes, Math.max(1L, totalSize), entry.name() + " çözülüyor...");
+                            effectiveProgress.onProgress(writtenBytes, Math.max(1L, totalSize), displayName + " çözülüyor...");
                         } finally {
                             SensitiveBytes.wipe(pt);
                         }
@@ -921,7 +1233,7 @@ public final class VaultSession implements AutoCloseable {
                                 try {
                                     RecordFrame.writeFully(outChannel, writtenBytes, ByteBuffer.wrap(pt));
                                     writtenBytes += pt.length;
-                                    effectiveProgress.onProgress(writtenBytes, totalSize, entry.name() + " çözülüyor...");
+                                    effectiveProgress.onProgress(writtenBytes, Math.max(1L, totalSize), displayName + " çözülüyor...");
                                 } finally {
                                     SensitiveBytes.wipe(pt);
                                 }
@@ -933,7 +1245,7 @@ public final class VaultSession implements AutoCloseable {
                             try {
                                 RecordFrame.writeFully(outChannel, writtenBytes, ByteBuffer.wrap(pt));
                                 writtenBytes += pt.length;
-                                effectiveProgress.onProgress(writtenBytes, totalSize, entry.name() + " çözülüyor...");
+                                effectiveProgress.onProgress(writtenBytes, Math.max(1L, totalSize), displayName + " çözülüyor...");
                             } finally {
                                 SensitiveBytes.wipe(pt);
                             }
@@ -948,10 +1260,8 @@ public final class VaultSession implements AutoCloseable {
 
             Files.move(partFile, destinationFile, StandardCopyOption.REPLACE_EXISTING);
             success = true;
-            effectiveProgress.onProgress(entry.logicalSize(), Math.max(1L, entry.logicalSize()), entry.name() + " dışa aktarıldı");
+            effectiveProgress.onProgress(totalSize, Math.max(1L, totalSize), displayName + " dışa aktarıldı");
         } finally {
-            stateLock.readLock().unlock();
-            activeTokens.remove(effectiveCancel);
             if (!success) {
                 try {
                     Files.deleteIfExists(partFile);
@@ -1264,16 +1574,29 @@ public final class VaultSession implements AutoCloseable {
                 }
 
                 for (VaultEntry entry : compactedMeta.allEntries()) {
-                    if (entry.isFile() && !entry.blocks().isEmpty()) {
-                        List<BlockRef> updatedRefs = new ArrayList<>(entry.blocks().size());
-                        for (BlockRef oldRef : entry.blocks()) {
-                            Long updatedOff = newOffsets.get(oldRef.blockId());
-                            if (updatedOff == null) {
-                                throw new VaultCorruptedException("Sıkıştırma blok eşlemesi eksik: " + oldRef.blockId());
-                            }
-                            updatedRefs.add(oldRef.withOffsetAndRecordLength(updatedOff, oldRef.encryptedRecordLength()));
+                    if (entry.isFile() && (!entry.blocks().isEmpty() || !entry.versions().isEmpty())) {
+                        List<BlockRef> updatedRefs = entry.blocks().isEmpty()
+                                ? List.of()
+                                : remapBlockRefs(entry.blocks(), newOffsets);
+                        List<FileVersion> updatedVersions = new ArrayList<>(entry.versions().size());
+                        for (FileVersion ver : entry.versions()) {
+                            List<BlockRef> remappedVerRefs = ver.blocks().isEmpty()
+                                    ? List.of()
+                                    : remapBlockRefs(ver.blocks(), newOffsets);
+                            updatedVersions.add(new FileVersion(ver.versionId(), ver.savedAt(), ver.logicalSize(), remappedVerRefs));
                         }
-                        compactedMeta.putEntry(new VaultEntry(entry.id(), entry.parentId(), entry.type(), entry.name(), entry.createdAt(), entry.modifiedAt(), entry.logicalSize(),updatedRefs));
+                        compactedMeta.putEntry(new VaultEntry(
+                                entry.id(),
+                                entry.parentId(),
+                                entry.type(),
+                                entry.name(),
+                                entry.createdAt(),
+                                entry.modifiedAt(),
+                                entry.logicalSize(),
+                                updatedRefs,
+                                entry.favorite(),
+                                entry.tags(),
+                                updatedVersions));
                     }
                 }
 
@@ -1364,6 +1687,19 @@ public final class VaultSession implements AutoCloseable {
                 }
             }
         }
+    }
+
+    private static List<BlockRef> remapBlockRefs(List<BlockRef> sourceRefs, Map<UUID, Long> newOffsets)
+            throws VaultCorruptedException {
+        List<BlockRef> updatedRefs = new ArrayList<>(sourceRefs.size());
+        for (BlockRef oldRef : sourceRefs) {
+            Long updatedOff = newOffsets.get(oldRef.blockId());
+            if (updatedOff == null) {
+                throw new VaultCorruptedException("Sıkıştırma blok eşlemesi eksik: " + oldRef.blockId());
+            }
+            updatedRefs.add(oldRef.withOffsetAndRecordLength(updatedOff, oldRef.encryptedRecordLength()));
+        }
+        return updatedRefs;
     }
 
     private static void verifyCompactedChannel(

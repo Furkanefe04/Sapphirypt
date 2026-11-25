@@ -1,6 +1,8 @@
 module com.sapphircrypt.sapphirypt {
     requires javafx.controls;
     requires javafx.fxml;
+    requires javafx.media;
+    requires javafx.web;
     requires java.desktop;
     requires jdk.management;
     requires org.bouncycastle.provider;

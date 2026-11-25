@@ -26,8 +26,12 @@ import java.util.UUID;
  */
 public final class VaultMetadata {
     public static final UUID ROOT_ID = new UUID(0L, 0L);
+    public static final int MAX_FILE_VERSIONS = 10;
+    public static final int MAX_TAGS_PER_ENTRY = 20;
+    public static final int MAX_TAG_LENGTH = 32;
     private static final byte[] MAGIC = "SMET".getBytes(StandardCharsets.US_ASCII);
-    private static final short SCHEMA_VERSION = 1;
+    private static final short SCHEMA_VERSION_V1 = 1;
+    private static final short SCHEMA_VERSION = 2;
 
     public enum EntryType {
         FOLDER((byte) 0),
@@ -82,6 +86,18 @@ public final class VaultMetadata {
         }
     }
 
+    public record FileVersion(
+            UUID versionId,
+            long savedAt,
+            long logicalSize,
+            List<BlockRef> blocks) {
+
+        public FileVersion {
+            Objects.requireNonNull(versionId, "versionId");
+            blocks = blocks == null ? List.of() : List.copyOf(blocks);
+        }
+    }
+
     public record VaultEntry(
             UUID id,
             UUID parentId,
@@ -90,13 +106,42 @@ public final class VaultMetadata {
             long createdAt,
             long modifiedAt,
             long logicalSize,
-            List<BlockRef> blocks) {
+            List<BlockRef> blocks,
+            boolean favorite,
+            List<String> tags,
+            List<FileVersion> versions) {
 
         public VaultEntry {
             Objects.requireNonNull(id, "id");
             Objects.requireNonNull(type, "type");
             Objects.requireNonNull(name, "name");
             blocks = blocks == null ? List.of() : List.copyOf(blocks);
+            tags = normalizeTags(tags);
+            versions = (type == EntryType.FOLDER || versions == null) ? List.of() : List.copyOf(versions);
+        }
+
+        public VaultEntry(
+                UUID id,
+                UUID parentId,
+                EntryType type,
+                String name,
+                long createdAt,
+                long modifiedAt,
+                long logicalSize,
+                List<BlockRef> blocks) {
+            this(id, parentId, type, name, createdAt, modifiedAt, logicalSize, blocks, false, List.of(), List.of());
+        }
+
+        public VaultEntry withFavorite(boolean nextFavorite) {
+            return new VaultEntry(id, parentId, type, name, createdAt, modifiedAt, logicalSize, blocks, nextFavorite, tags, versions);
+        }
+
+        public VaultEntry withTags(Collection<String> nextTags) {
+            return new VaultEntry(id, parentId, type, name, createdAt, modifiedAt, logicalSize, blocks, favorite, normalizeTags(nextTags), versions);
+        }
+
+        public VaultEntry withVersions(List<FileVersion> nextVersions) {
+            return new VaultEntry(id, parentId, type, name, createdAt, modifiedAt, logicalSize, blocks, favorite, tags, nextVersions);
         }
 
         public boolean isFolder() {
@@ -117,6 +162,37 @@ public final class VaultMetadata {
             }
             return name.substring(idx + 1).toLowerCase(Locale.ROOT);
         }
+    }
+
+    public static List<String> normalizeTags(Collection<String> rawTags) {
+        if (rawTags == null || rawTags.isEmpty()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        Set<String> seenLower = new HashSet<>();
+        for (String raw : rawTags) {
+            if (raw == null) {
+                continue;
+            }
+            String trimmed = raw.trim();
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            if (trimmed.length() > MAX_TAG_LENGTH) {
+                trimmed = trimmed.substring(0, MAX_TAG_LENGTH).trim();
+            }
+            if (trimmed.isEmpty()) {
+                continue;
+            }
+            String lower = trimmed.toLowerCase(Locale.ROOT);
+            if (seenLower.add(lower)) {
+                out.add(trimmed);
+                if (out.size() >= MAX_TAGS_PER_ENTRY) {
+                    break;
+                }
+            }
+        }
+        return out.isEmpty() ? List.of() : List.copyOf(out);
     }
 
     public record StorageStats(
@@ -243,11 +319,22 @@ public final class VaultMetadata {
     }
 
     public List<VaultEntry> search(UUID scopeFolderId, boolean recursive, String query, String extensionFilter) {
+        return search(scopeFolderId, recursive, query, extensionFilter, false, null);
+    }
+
+    public List<VaultEntry> search(
+            UUID scopeFolderId,
+            boolean recursive,
+            String query,
+            String extensionFilter,
+            boolean favoritesOnly,
+            String tagFilter) {
         String q = query == null ? "" : query.trim().toLowerCase(Locale.ROOT);
         String ext = extensionFilter == null ? "" : extensionFilter.trim().toLowerCase(Locale.ROOT);
         if (ext.startsWith(".")) {
             ext = ext.substring(1);
         }
+        String tag = tagFilter == null ? "" : tagFilter.trim().toLowerCase(Locale.ROOT);
 
         List<VaultEntry> candidates;
         if (!recursive) {
@@ -265,7 +352,18 @@ public final class VaultMetadata {
 
             if (!ext.isEmpty()) {
                 if (entry.isFolder() || !entry.extensionLower().equals(ext)) continue;
+            }
+            if (favoritesOnly && !entry.favorite()) continue;
 
+            if (!tag.isEmpty()) {
+                boolean hasTag = false;
+                for (String entryTag : entry.tags()) {
+                    if (entryTag.toLowerCase(Locale.ROOT).equals(tag)) {
+                        hasTag = true;
+                        break;
+                    }
+                }
+                if (!hasTag) continue;
             }
             result.add(entry);
         }
@@ -320,12 +418,30 @@ public final class VaultMetadata {
         return exts;
     }
 
+    public Set<String> collectDistinctTags() {
+        Map<String, String> byLower = new HashMap<>();
+        for (VaultEntry entry : entries.values()) {
+            if (ROOT_ID.equals(entry.id())) continue;
+            for (String tag : entry.tags()) {
+                byLower.putIfAbsent(tag.toLowerCase(Locale.ROOT), tag);
+            }
+        }
+        List<String> sorted = new ArrayList<>(byLower.values());
+        sorted.sort(String.CASE_INSENSITIVE_ORDER);
+        return new java.util.LinkedHashSet<>(sorted);
+    }
+
     public Map<UUID, BlockRef> collectUniqueActiveBlocks() {
         Map<UUID, BlockRef> unique = new LinkedHashMap<>();
         for (VaultEntry entry : entries.values()) {
             if (entry.isFile()) {
                 for (BlockRef ref : entry.blocks()) {
                     unique.putIfAbsent(ref.blockId(), ref);
+                }
+                for (FileVersion version : entry.versions()) {
+                    for (BlockRef ref : version.blocks()) {
+                        unique.putIfAbsent(ref.blockId(), ref);
+                    }
                 }
             }
         }
@@ -352,6 +468,12 @@ public final class VaultMetadata {
                     totalRefs++;
                     uniqueBlocks.putIfAbsent(ref.blockId(), ref);
                 }
+                for (FileVersion version : entry.versions()) {
+                    for (BlockRef ref : version.blocks()) {
+                        totalRefs++;
+                        uniqueBlocks.putIfAbsent(ref.blockId(), ref);
+                    }
+                }
             }
         }
 
@@ -368,12 +490,28 @@ public final class VaultMetadata {
 
     public byte[] serialize() {
         List<byte[]> encodedNames = new ArrayList<>(entries.size());
+        List<List<byte[]>> encodedEntryTags = new ArrayList<>(entries.size());
         int totalBytes = 4 + 2 + 8 + 8 + 4; // magic + version + seq + nextRecSeq + count
         for (VaultEntry entry : entries.values()) {
             byte[] nameBytes = entry.name().getBytes(StandardCharsets.UTF_8);
             encodedNames.add(nameBytes);
             totalBytes += 16 + 16 + 1 + 4 + nameBytes.length + 8 + 8 + 8 + 4;
-            totalBytes += entry.blocks().size() * (16 + 4 + 8 + 4 + 4 + 8 + 8 + 32);
+            totalBytes += entry.blocks().size() * 84;
+
+            List<byte[]> tagBytesList = new ArrayList<>(entry.tags().size());
+            totalBytes += 1 + 4; // favorite byte + tagCount
+            for (String tag : entry.tags()) {
+                byte[] tb = tag.getBytes(StandardCharsets.UTF_8);
+                tagBytesList.add(tb);
+                totalBytes += 4 + tb.length;
+            }
+            encodedEntryTags.add(tagBytesList);
+
+            totalBytes += 4; // versionCount
+            for (FileVersion version : entry.versions()) {
+                totalBytes += 16 + 8 + 8 + 4; // versionId + savedAt + logicalSize + blockCount
+                totalBytes += version.blocks().size() * 84;
+            }
         }
 
         ByteBuffer buf = ByteBuffer.allocate(totalBytes).order(ByteOrder.BIG_ENDIAN);
@@ -385,7 +523,9 @@ public final class VaultMetadata {
 
         int i = 0;
         for (VaultEntry entry : entries.values()) {
-            byte[] nameBytes = encodedNames.get(i++);
+            byte[] nameBytes = encodedNames.get(i);
+            List<byte[]> tagBytesList = encodedEntryTags.get(i);
+            i++;
             putUuid(buf, entry.id());
             putUuid(buf, entry.parentId());
             buf.put(entry.type().code());
@@ -394,19 +534,37 @@ public final class VaultMetadata {
             buf.putLong(entry.createdAt());
             buf.putLong(entry.modifiedAt());
             buf.putLong(entry.logicalSize());
-            buf.putInt(entry.blocks().size());
-            for (BlockRef ref : entry.blocks()) {
-                putUuid(buf, ref.blockId());
-                buf.putInt(ref.blockIndex());
-                buf.putLong(ref.recordOffset());
-                buf.putInt(ref.encryptedRecordLength());
-                buf.putInt(ref.plaintextLength());
-                buf.putLong(ref.nonceCounter());
-                buf.putLong(ref.recordSequence());
-                buf.put(ref.plaintextSha256());
+            writeBlockRefs(buf, entry.blocks());
+
+            buf.put((byte) (entry.favorite() ? 1 : 0));
+            buf.putInt(tagBytesList.size());
+            for (byte[] tb : tagBytesList) {
+                buf.putInt(tb.length);
+                buf.put(tb);
+            }
+            buf.putInt(entry.versions().size());
+            for (FileVersion version : entry.versions()) {
+                putUuid(buf, version.versionId());
+                buf.putLong(version.savedAt());
+                buf.putLong(version.logicalSize());
+                writeBlockRefs(buf, version.blocks());
             }
         }
         return buf.array();
+    }
+
+    private static void writeBlockRefs(ByteBuffer buf, List<BlockRef> blocks) {
+        buf.putInt(blocks.size());
+        for (BlockRef ref : blocks) {
+            putUuid(buf, ref.blockId());
+            buf.putInt(ref.blockIndex());
+            buf.putLong(ref.recordOffset());
+            buf.putInt(ref.encryptedRecordLength());
+            buf.putInt(ref.plaintextLength());
+            buf.putLong(ref.nonceCounter());
+            buf.putLong(ref.recordSequence());
+            buf.put(ref.plaintextSha256());
+        }
     }
 
     public static VaultMetadata deserialize(byte[] bytes) throws VaultCorruptedException {
@@ -420,7 +578,7 @@ public final class VaultMetadata {
         ByteBuffer buf = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN);
         buf.position(4);
         short version = buf.getShort();
-        if (version != SCHEMA_VERSION) {
+        if (version != SCHEMA_VERSION_V1 && version != SCHEMA_VERSION) {
             throw new VaultCorruptedException("Desteklenmeyen metaveri şema sürümü: " + version);
         }
         long metaSeq = buf.getLong();
@@ -447,29 +605,90 @@ public final class VaultMetadata {
             long created = buf.getLong();
             long modified = buf.getLong();
             long logicalSize = buf.getLong();
-            int blockCount = buf.getInt();
-            if (blockCount < 0 || blockCount > 10_000_000 || (long) blockCount * 84L > buf.remaining()) {
-                throw new VaultCorruptedException("Geçersiz blok referans sayısı: " + blockCount);
+            List<BlockRef> blocks = readBlockRefs(buf);
+
+            boolean favorite = false;
+            List<String> tags = List.of();
+            List<FileVersion> versions = List.of();
+
+            if (version >= SCHEMA_VERSION) {
+                if (buf.remaining() < 9) {
+                    throw new VaultCorruptedException("Metaveri v2 alanları eksik");
+                }
+                favorite = buf.get() != 0;
+                int tagCount = buf.getInt();
+                if (tagCount < 0 || tagCount > 256) {
+                    throw new VaultCorruptedException("Geçersiz etiket sayısı: " + tagCount);
+                }
+                if (tagCount > 0) {
+                    List<String> parsedTags = new ArrayList<>(tagCount);
+                    for (int t = 0; t < tagCount; t++) {
+                        if (buf.remaining() < 4) {
+                            throw new VaultCorruptedException("Metaveri etiket uzunluğu eksik");
+                        }
+                        int tLen = buf.getInt();
+                        if (tLen < 0 || tLen > 512 || buf.remaining() < tLen) {
+                            throw new VaultCorruptedException("Geçersiz etiket uzunluğu: " + tLen);
+                        }
+                        byte[] tBytes = new byte[tLen];
+                        buf.get(tBytes);
+                        parsedTags.add(new String(tBytes, StandardCharsets.UTF_8));
+                    }
+                    tags = parsedTags;
+                }
+                if (buf.remaining() < 4) {
+                    throw new VaultCorruptedException("Metaveri sürüm sayısı eksik");
+                }
+                int versionCount = buf.getInt();
+                if (versionCount < 0 || versionCount > 1024) {
+                    throw new VaultCorruptedException("Geçersiz sürüm sayısı: " + versionCount);
+                }
+                if (versionCount > 0) {
+                    List<FileVersion> parsedVersions = new ArrayList<>(versionCount);
+                    for (int v = 0; v < versionCount; v++) {
+                        if (buf.remaining() < 36) {
+                            throw new VaultCorruptedException("Metaveri sürüm kaydı eksik");
+                        }
+                        UUID versionId = getUuid(buf);
+                        long savedAt = buf.getLong();
+                        long verSize = buf.getLong();
+                        List<BlockRef> verBlocks = readBlockRefs(buf);
+                        parsedVersions.add(new FileVersion(versionId, savedAt, verSize, verBlocks));
+                    }
+                    versions = parsedVersions;
+                }
             }
-            List<BlockRef> blocks = new ArrayList<>(blockCount);
-            for (int b = 0; b < blockCount; b++) {
-                UUID blockId = getUuid(buf);
-                int blockIdx = buf.getInt();
-                long recOffset = buf.getLong();
-                int encLen = buf.getInt();
-                int ptLen = buf.getInt();
-                long nonceCtr = buf.getLong();
-                long recSeq = buf.getLong();
-                byte[] sha = new byte[32];
-                buf.get(sha);
-                blocks.add(new BlockRef(blockId, blockIdx, recOffset, encLen, ptLen, nonceCtr, recSeq, sha));
-            }
-            entries.put(id, new VaultEntry(id, parentId, type, name, created, modified, logicalSize, blocks));
+
+            entries.put(id, new VaultEntry(id, parentId, type, name, created, modified, logicalSize, blocks, favorite, tags, versions));
         }
         if (!entries.containsKey(ROOT_ID)) {
             throw new VaultCorruptedException("Kasa metaverisinde kök klasör eksik");
         }
         return new VaultMetadata(metaSeq, nextRecSeq, entries);
+    }
+
+    private static List<BlockRef> readBlockRefs(ByteBuffer buf) throws VaultCorruptedException {
+        if (buf.remaining() < 4) {
+            throw new VaultCorruptedException("Blok referans sayısı okunamadı");
+        }
+        int blockCount = buf.getInt();
+        if (blockCount < 0 || blockCount > 10_000_000 || (long) blockCount * 84L > buf.remaining()) {
+            throw new VaultCorruptedException("Geçersiz blok referans sayısı: " + blockCount);
+        }
+        List<BlockRef> blocks = new ArrayList<>(blockCount);
+        for (int b = 0; b < blockCount; b++) {
+            UUID blockId = getUuid(buf);
+            int blockIdx = buf.getInt();
+            long recOffset = buf.getLong();
+            int encLen = buf.getInt();
+            int ptLen = buf.getInt();
+            long nonceCtr = buf.getLong();
+            long recSeq = buf.getLong();
+            byte[] sha = new byte[32];
+            buf.get(sha);
+            blocks.add(new BlockRef(blockId, blockIdx, recOffset, encLen, ptLen, nonceCtr, recSeq, sha));
+        }
+        return blocks;
     }
 
     private static void putUuid(ByteBuffer buf, UUID id) {
