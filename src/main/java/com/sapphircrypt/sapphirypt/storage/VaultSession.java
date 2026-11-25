@@ -464,7 +464,7 @@ public final class VaultSession implements AutoCloseable {
 
     public static final long AUTO_COMPACT_MIN_ORPHAN_BYTES = 64L * 1024L;
 
-    public StorageStats getStorageStats() throws VaultLockedException, IOException {
+    public StorageStats getStorageStats() throws VaultLockedException {
         ensureOpen();
         return this.cachedStorageStats;
     }
@@ -996,6 +996,17 @@ public final class VaultSession implements AutoCloseable {
         }
     }
 
+    public VaultEntry syncExternalFileEdit(UUID entryId, Path tempFile) throws VaultException, IOException {
+        if (entryId == null || tempFile == null || !Files.isRegularFile(tempFile)) {
+            return null;
+        }
+        VaultEntry current = getMetadataSnapshot().getEntry(entryId).orElse(null);
+        if (current == null || !current.isFile()) {
+            return null;
+        }
+        return importFile(tempFile, current.parentId(), current.name(), true, CancellationToken.NONE, ProgressListener.NO_OP);
+    }
+
     public void exportFolder(UUID folderId, Path destinationParentDir, CancellationToken cancel, ProgressListener progress) throws VaultException, IOException {
         Objects.requireNonNull(destinationParentDir, "destinationParentDir");
         CancellationToken effectiveCancel = cancel == null ? CancellationToken.NONE : cancel;
@@ -1419,7 +1430,7 @@ public final class VaultSession implements AutoCloseable {
             KeySlot activeRecSlot,
             char[] password,
             Path recoveryKeyPath,
-            byte[] expectedDekOrNull) throws VaultException, IOException {
+            byte[] expectedDekOrNull) throws VaultException {
         if (password == null || password.length == 0) {
             throw new VaultAuthenticationException("Parola boş olamaz");
         }

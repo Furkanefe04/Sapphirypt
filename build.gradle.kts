@@ -19,7 +19,7 @@ repositories {
 }
 
 val junitVersion = "5.10.2"
-val bouncyCastleVersion = "1.79"
+val bouncyCastleVersion = "1.87"
 
 java {
     toolchain {

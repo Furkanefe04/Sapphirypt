@@ -17,7 +17,6 @@ import com.sapphircrypt.sapphirypt.ui.UiShell.ToastType;
 import com.sapphircrypt.sapphirypt.ui.VaultDrawers;
 import com.sapphircrypt.sapphirypt.ui.VaultView;
 import com.sapphircrypt.sapphirypt.ui.WelcomeView;
-import javafx.animation.FadeTransition;
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.scene.Scene;
@@ -25,7 +24,6 @@ import javafx.scene.control.Button;
 import javafx.scene.paint.Color;
 import javafx.stage.Stage;
 import javafx.stage.StageStyle;
-import javafx.util.Duration;
 import org.bouncycastle.crypto.generators.Argon2BytesGenerator;
 
 import java.nio.file.Files;
@@ -489,6 +487,9 @@ public final class SapphiryptApplication extends Application {
 
     private void lockActiveVaultInternal(boolean showToast) {
         boolean wasUnlocked = activeSession != null || activeVaultView != null;
+        if (activeSession != null && !activeSession.isClosed()) {
+            activeSession.tempPreviewManager().syncPendingEditsNow();
+        }
         if (activeVaultView != null) {
             activeVaultView.close();
             activeVaultView = null;

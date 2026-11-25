@@ -180,9 +180,7 @@ class VaultLifecycleManagementTest {
             assertNotNull(other);
         }
 
-        VaultSession session = VaultSession.createVault(
-                liveVault, "LivePass!1".toCharArray(), Argon2Params.forTesting(), liveKey, CpuProfile.BALANCED, 2).session();
-        try {
+        try (VaultSession session = VaultSession.createVault(liveVault, "LivePass!1".toCharArray(), Argon2Params.forTesting(), liveKey, CpuProfile.BALANCED, 2).session()) {
             assertThrows(VaultAuthenticationException.class,
                     () -> session.deleteVault("WrongPass!".toCharArray(), liveKey, false));
             assertThrows(VaultAuthenticationException.class,
@@ -195,8 +193,6 @@ class VaultLifecycleManagementTest {
             assertTrue(Files.exists(liveKey));
             assertTrue(session.isClosed());
             assertThrows(VaultLockedException.class, session::getMetadataSnapshot);
-        } finally {
-            session.close();
         }
     }
 }

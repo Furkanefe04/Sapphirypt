@@ -404,7 +404,7 @@ public final class MotionFx {
         spinner.valueProperty().addListener((obs, oldVal, newVal) -> {
             Node editor = spinner.getEditor() != null ? spinner.getEditor() : spinner;
             double fromY = 0.0;
-            if (oldVal instanceof Comparable<?> cmp && newVal != null && oldVal.getClass().isInstance(newVal)) {
+            if (oldVal instanceof Comparable<?> cmp && oldVal.getClass().isInstance(newVal)) {
                 int diff = ((Comparable<Object>) newVal).compareTo(oldVal);
                 fromY = diff > 0 ? 3.0 : (diff < 0 ? -3.0 : 0.0);
             }

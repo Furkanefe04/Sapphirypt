@@ -980,7 +980,7 @@ public final class VaultView extends StackPane implements AutoCloseable {
         exportSelectedBtn.setDisable(true);
         exportSelectedBtn.setOnAction(e -> handleExportSelected());
 
-        Label extNote = new Label("Harici uygulama açılışında geçici düz metin ~/.sapphirypt/tmp dizinine yazılır ve kilitlemede temizlenir.");
+        Label extNote = new Label("Harici uygulamada açılan dosyadaki değişiklikler otomatik olarak kasaya geri kaydedilir; kasa kilitlendiğinde geçici kopya temizlenir.");
         extNote.getStyleClass().add("muted-text");
         extNote.setWrapText(true);
         extNote.setStyle("-fx-font-size: 11px;");
@@ -1582,6 +1582,42 @@ public final class VaultView extends StackPane implements AutoCloseable {
         runBackgroundTask(entry.name() + " hazırlanıyor...", true, (cancel, progress) -> {
             Path tempFile = session.tempPreviewManager().createTempFile(entry.name());
             session.exportFile(entry.id(), tempFile, cancel, progress);
+            session.tempPreviewManager().hardenFile(tempFile);
+            session.tempPreviewManager().watchExternalFile(tempFile, entry.id(), (entryId, modifiedPath) -> {
+                VaultEntry updated = session.syncExternalFileEdit(entryId, modifiedPath);
+                if (updated != null) {
+                    Platform.runLater(() -> {
+                        EntryRow currentPrimary = primarySelectedRow();
+                        boolean wasSelectedInList = viewMode == ViewMode.LIST
+                                && entryTable.getSelectionModel().getSelectedItems().stream()
+                                .anyMatch(r -> updated.id().equals(r.entry().id()));
+                        boolean shouldRefreshPreview = updated.id().equals(lastPreviewedId)
+                                || wasSelectedInList
+                                || gridSelectedIds.contains(updated.id())
+                                || (currentPrimary != null && updated.id().equals(currentPrimary.entry().id()));
+
+                        refreshAll();
+
+                        EntryRow refreshedRow = currentDisplayedRows.stream()
+                                .filter(r -> updated.id().equals(r.entry().id()))
+                                .findFirst()
+                                .orElse(new EntryRow(updated, updated.logicalSize()));
+
+                        boolean inspectorUpdated = false;
+                        if (wasSelectedInList) {
+                            int idx = entryTable.getItems().indexOf(refreshedRow);
+                            if (idx >= 0) {
+                                entryTable.getSelectionModel().select(idx);
+                                inspectorUpdated = true;
+                            }
+                        }
+                        if (!inspectorUpdated && shouldRefreshPreview) {
+                            updateInspector(refreshedRow);
+                        }
+                        shell.showToast(ToastType.SUCCESS, "Değişiklik Kasaya Kaydedildi", updated.name());
+                    });
+                }
+            });
             Desktop.getDesktop().open(tempFile.toFile());
             return entry.name() + " harici uygulamada açıldı";
         });

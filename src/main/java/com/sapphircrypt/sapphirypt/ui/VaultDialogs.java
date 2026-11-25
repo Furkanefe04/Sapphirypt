@@ -1302,7 +1302,7 @@ public final class VaultDialogs {
         if (vStr.isEmpty() || !Files.isRegularFile(Path.of(vStr))) {
             return "Lütfen geçerli bir .sapphirypt kasa dosyası seçin.";
         }
-        if (pwField.getCharacters().length() == 0) {
+        if (pwField.getCharacters().isEmpty()) {
             return "Lütfen kasa parolasını girin.";
         }
         String kStr = keyPathStr == null ? "" : keyPathStr.trim();
@@ -1313,9 +1313,8 @@ public final class VaultDialogs {
     }
 
     private static String stripVaultExtension(Path path) {
-        if (path == null || path.getFileName() == null) {
-            return "";
-        }
+        if (path == null || path.getFileName() == null) return "";
+
         String fileName = path.getFileName().toString();
         if (fileName.toLowerCase(Locale.ROOT).endsWith(VaultConstants.FILE_EXTENSION)) {
             return fileName.substring(0, fileName.length() - VaultConstants.FILE_EXTENSION.length());
