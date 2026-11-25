@@ -197,6 +197,7 @@ public final class SapphiryptApplication extends Application {
         }
 
         autoLockMonitor = new AutoLockMonitor(scene, settings.autoLockMinutes(), this::lockActiveVault);
+        autoLockMonitor.setKeepActiveDuringTransfers(settings.keepUnlockedDuringTransfers());
 
         stage.setTitle("Sapphirypt");
         stage.setMinWidth(940);
@@ -326,6 +327,7 @@ public final class SapphiryptApplication extends Application {
                 settings,
                 uiShell,
                 themeManager,
+                autoLockMonitor,
                 this::handleActiveVaultRenamed,
                 this::handleActiveVaultDeleted);
 
@@ -401,6 +403,9 @@ public final class SapphiryptApplication extends Application {
         if (activeSession != null) {
             activeSession.close();
             activeSession = null;
+        }
+        if (autoLockMonitor != null) {
+            autoLockMonitor.clearActivityHolds();
         }
         activeVaultPath = null;
         if (uiShell != null && welcomeView != null) {

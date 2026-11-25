@@ -16,6 +16,7 @@ import javafx.geometry.Rectangle2D;
 import javafx.scene.Cursor;
 import javafx.scene.Node;
 import javafx.scene.Parent;
+import javafx.scene.SnapshotParameters;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.Control;
@@ -25,6 +26,8 @@ import javafx.scene.control.Separator;
 import javafx.scene.control.TextArea;
 import javafx.scene.control.TextField;
 import javafx.scene.control.Tooltip;
+import javafx.scene.image.ImageView;
+import javafx.scene.image.WritableImage;
 import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.KeyCode;
@@ -36,7 +39,9 @@ import javafx.scene.layout.Priority;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
 import javafx.scene.shape.Rectangle;
+import javafx.scene.transform.Transform;
 import javafx.stage.Screen;
 import javafx.stage.Stage;
 import javafx.util.Duration;
@@ -95,6 +100,10 @@ public final class UiShell extends StackPane {
     // Toast host
     private final VBox toastLayer = new VBox(10);
 
+    // Soft theme cross-fade ghost
+    private ImageView themeGhost;
+    private FadeTransition themeGhostFade;
+
     // Custom window drag / resize / maximize state
     private double dragOffsetX;
     private double dragOffsetY;
@@ -149,8 +158,54 @@ public final class UiShell extends StackPane {
         });
 
         themeManager.registerRoot(this);
+        themeManager.setTransitionHandler(this::playThemeCrossFade);
         themeManager.addListener(this::refreshChromeIcons);
         refreshChromeIcons();
+    }
+
+    private void playThemeCrossFade(Runnable applyChange) {
+        finishThemeGhost();
+        double w = clippedSurface.getWidth();
+        double h = clippedSurface.getHeight();
+        if (getScene() == null || getScene().getWindow() == null || !getScene().getWindow().isShowing() || w < 2 || h < 2) {
+            applyChange.run();
+            return;
+        }
+        double sx = getScene().getWindow().getOutputScaleX();
+        double sy = getScene().getWindow().getOutputScaleY();
+        SnapshotParameters params = new SnapshotParameters();
+        params.setFill(Color.TRANSPARENT);
+        params.setTransform(Transform.scale(sx, sy));
+        WritableImage img = clippedSurface.snapshot(params, null);
+        ImageView ghost = new ImageView(img);
+        ghost.setFitWidth(w);
+        ghost.setFitHeight(h);
+        ghost.setMouseTransparent(true);
+        ghost.setManaged(false);
+        ghost.relocate(0, 0);
+        clippedSurface.getChildren().add(ghost);
+        themeGhost = ghost;
+        applyChange.run();
+        FadeTransition fade = new FadeTransition(Duration.millis(450), ghost);
+        fade.setFromValue(1.0);
+        fade.setToValue(0.0);
+        fade.setInterpolator(MotionFx.EASE_IN_OUT);
+        fade.setOnFinished(e -> finishThemeGhost());
+        themeGhostFade = fade;
+        fade.play();
+    }
+
+    private void finishThemeGhost() {
+        if (themeGhostFade != null) {
+            themeGhostFade.setOnFinished(null);
+            themeGhostFade.stop();
+            themeGhostFade = null;
+        }
+        if (themeGhost != null) {
+            clippedSurface.getChildren().remove(themeGhost);
+            themeGhost.setImage(null);
+            themeGhost = null;
+        }
     }
 
     private void buildTitleBar(Runnable onOpenSettings) {

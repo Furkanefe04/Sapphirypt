@@ -201,7 +201,7 @@ public final class WelcomeView extends BorderPane implements AutoCloseable {
 
             Node lockIcon = SapphireIcons.lock(18, exists ? accent : muted);
 
-            Label nameLbl = new Label(item.getFileName() != null ? item.getFileName().toString() : item.toString());
+            Label nameLbl = new Label(item.getFileName() != null ? item.getFileName().toString().split("\\.sapphirypt")[0] : item.toString());
             nameLbl.getStyleClass().add("primary-text");
             nameLbl.setStyle("-fx-font-weight: bold; -fx-font-size: 13.5px;");
 

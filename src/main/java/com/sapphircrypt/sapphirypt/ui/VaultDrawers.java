@@ -1284,6 +1284,17 @@ public final class VaultDrawers {
         });
         autoLockCombo.setButtonCell(autoLockCombo.getCellFactory().call(null));
 
+        CheckBox keepActiveCheck = new CheckBox("Aktarım sürerken açık tut");
+        keepActiveCheck.setSelected(settings.keepUnlockedDuringTransfers());
+        keepActiveCheck.setMinWidth(Region.USE_PREF_SIZE);
+        keepActiveCheck.setTooltip(new Tooltip("Dosya ekleme, dışa aktarma veya sıkıştırma devam ederken hareketsizlik süresi dolsa bile kasa kilitlenmez. Bilgisayar uyku moduna geçerse kasa yine kilitlenir."));
+        keepActiveCheck.disableProperty().bind(autoLockCombo.valueProperty().isEqualTo(0));
+        HBox.setHgrow(autoLockCombo, Priority.ALWAYS);
+        HBox autoLockRow = new HBox(12, autoLockCombo, keepActiveCheck);
+        autoLockRow.setAlignment(Pos.CENTER_LEFT);
+        Label keepActiveNote = mutedWrap("İşaretliyken dosya aktarımı bitene kadar süre sayacı durur; işlem bittiğinde sayaç yeniden başlar.");
+        keepActiveNote.setStyle("-fx-font-size: 11.5px;");
+
         // Cache stats
         Label cacheLabel = mutedWrap("");
         cacheLabel.setStyle("-fx-font-size: 11.5px;");
@@ -1322,7 +1333,8 @@ public final class VaultDrawers {
 
         VBox lockCacheCard = new VBox(10,
                 sectionHeader("OTOMATİK KİLİT & ÖNBELLEK"),
-                fieldLabel("Hareketsizlik Sonrası Kilitleme"), autoLockCombo,
+                fieldLabel("Hareketsizlik Sonrası Kilitleme"), autoLockRow,
+                keepActiveNote,
                 cacheLabel,
                 clearCacheBtn);
         lockCacheCard.getStyleClass().add("panel-card");
@@ -1343,12 +1355,14 @@ public final class VaultDrawers {
             settings.setCpuProfile(selectedProfile[0]);
             settings.setMaxWorkersOverride(workerSpinner.getValue() == null ? 0 : workerSpinner.getValue());
             settings.setAutoLockMinutes(autoLockCombo.getValue() == null ? 10 : autoLockCombo.getValue());
+            settings.setKeepUnlockedDuringTransfers(keepActiveCheck.isSelected());
             settings.save();
             if (session != null) {
                 session.reconfigureWorkers(settings.cpuProfile(), settings.maxWorkersOverride());
             }
             if (autoLockMonitor != null) {
                 autoLockMonitor.updateTimeoutMinutes(settings.autoLockMinutes());
+                autoLockMonitor.setKeepActiveDuringTransfers(settings.keepUnlockedDuringTransfers());
             }
             if (onSettingsApplied != null) {
                 onSettingsApplied.run();

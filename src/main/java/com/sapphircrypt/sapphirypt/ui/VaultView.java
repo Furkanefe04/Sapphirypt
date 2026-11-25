@@ -118,6 +118,7 @@ public final class VaultView extends StackPane implements AutoCloseable {
     private final AppSettings settings;
     private final UiShell shell;
     private final ThemeManager themeManager;
+    private final AutoLockMonitor autoLockMonitor;
     private final Consumer<Path> onVaultRenamed;
     private final Runnable onVaultDeleted;
     private final ExecutorService bgExecutor;
@@ -188,12 +189,14 @@ public final class VaultView extends StackPane implements AutoCloseable {
             AppSettings settings,
             UiShell shell,
             ThemeManager themeManager,
+            AutoLockMonitor autoLockMonitor,
             Consumer<Path> onVaultRenamed,
             Runnable onVaultDeleted) {
         this.session = session;
         this.settings = settings;
         this.shell = shell;
         this.themeManager = themeManager;
+        this.autoLockMonitor = autoLockMonitor;
         this.onVaultRenamed = onVaultRenamed;
         this.onVaultDeleted = onVaultDeleted;
         this.bgExecutor = Executors.newSingleThreadExecutor(r -> {
@@ -1556,28 +1559,36 @@ public final class VaultView extends StackPane implements AutoCloseable {
                     }
                 }));
 
-        bgExecutor.submit(() -> {
-            try {
-                String resultMsg = op.execute(token, throttledProgress);
-                Platform.runLater(() -> {
-                    hideProgressPill();
-                    refreshAll();
-                    shell.showToast(ToastType.SUCCESS, "İşlem Tamamlandı", resultMsg);
-                });
-            } catch (VaultCancelledException cancelled) {
-                Platform.runLater(() -> {
-                    hideProgressPill();
-                    refreshAll();
-                    shell.showToast(ToastType.WARNING, "İptal Edildi", "Devam eden işlem kullanıcı tarafından durduruldu.");
-                });
-            } catch (Exception ex) {
-                Platform.runLater(() -> {
-                    hideProgressPill();
-                    refreshAll();
-                    shell.showErrorOverlay("İşlem Hatası", ex.getMessage(), ex);
-                });
-            }
-        });
+        AutoLockMonitor.ActivityHold hold = autoLockMonitor != null ? autoLockMonitor.beginActivityHold() : () -> {};
+        try {
+            bgExecutor.submit(() -> {
+                try {
+                    String resultMsg = op.execute(token, throttledProgress);
+                    Platform.runLater(() -> {
+                        hideProgressPill();
+                        refreshAll();
+                        shell.showToast(ToastType.SUCCESS, "İşlem Tamamlandı", resultMsg);
+                    });
+                } catch (VaultCancelledException cancelled) {
+                    Platform.runLater(() -> {
+                        hideProgressPill();
+                        refreshAll();
+                        shell.showToast(ToastType.WARNING, "İptal Edildi", "Devam eden işlem kullanıcı tarafından durduruldu.");
+                    });
+                } catch (Exception ex) {
+                    Platform.runLater(() -> {
+                        hideProgressPill();
+                        refreshAll();
+                        shell.showErrorOverlay("İşlem Hatası", ex.getMessage(), ex);
+                    });
+                } finally {
+                    hold.close();
+                }
+            });
+        } catch (RuntimeException submitEx) {
+            hold.close();
+            throw submitEx;
+        }
     }
 
     private void hideProgressPill() {

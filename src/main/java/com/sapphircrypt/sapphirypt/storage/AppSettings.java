@@ -18,6 +18,7 @@ public final class AppSettings {
     private CpuProfile cpuProfile = CpuProfile.BALANCED;
     private int maxWorkersOverride = 0; // 0 = automatic
     private int autoLockMinutes = 10;   // 0 = disabled
+    private boolean keepUnlockedDuringTransfers = true;
     private ThemeMode themeMode = ThemeMode.DARK;
     private final List<Path> recentVaults = new ArrayList<>();
 
@@ -45,6 +46,7 @@ public final class AppSettings {
             }
             settings.maxWorkersOverride = parseInt(props.getProperty("maxWorkersOverride"), 0, 0, 16);
             settings.autoLockMinutes = parseInt(props.getProperty("autoLockMinutes"), 10, 0, 240);
+            settings.keepUnlockedDuringTransfers = Boolean.parseBoolean(props.getProperty("keepUnlockedDuringTransfers", "true"));
             String themeStr = props.getProperty("themeMode", ThemeMode.DARK.name());
             try {
                 settings.themeMode = ThemeMode.valueOf(themeStr);
@@ -76,6 +78,7 @@ public final class AppSettings {
             props.setProperty("cpuProfile", cpuProfile.name());
             props.setProperty("maxWorkersOverride", Integer.toString(maxWorkersOverride));
             props.setProperty("autoLockMinutes", Integer.toString(autoLockMinutes));
+            props.setProperty("keepUnlockedDuringTransfers", Boolean.toString(keepUnlockedDuringTransfers));
             props.setProperty("themeMode", themeMode.name());
             props.setProperty("recentCount", Integer.toString(recentVaults.size()));
             for (int i = 0; i < recentVaults.size(); i++) {
@@ -110,6 +113,14 @@ public final class AppSettings {
 
     public void setAutoLockMinutes(int autoLockMinutes) {
         this.autoLockMinutes = Math.max(0, Math.min(240, autoLockMinutes));
+    }
+
+    public boolean keepUnlockedDuringTransfers() {
+        return keepUnlockedDuringTransfers;
+    }
+
+    public void setKeepUnlockedDuringTransfers(boolean keepUnlockedDuringTransfers) {
+        this.keepUnlockedDuringTransfers = keepUnlockedDuringTransfers;
     }
 
     public ThemeMode themeMode() {

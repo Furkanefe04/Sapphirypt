@@ -16,6 +16,11 @@ import java.util.List;
  * and refreshes automatic day/night switching every 60 seconds.
  */
 public final class ThemeManager implements AutoCloseable {
+    @FunctionalInterface
+    public interface TransitionHandler {
+        void transition(Runnable applyChange);
+    }
+
     public static final String CLASS_DARK = "theme-dark";
     public static final String CLASS_LIGHT = "theme-light";
 
@@ -25,6 +30,7 @@ public final class ThemeManager implements AutoCloseable {
     private final Timeline autoSwitchTicker;
 
     private boolean currentDark;
+    private TransitionHandler transitionHandler;
 
     public ThemeManager(AppSettings settings) {
         this.settings = settings;
@@ -40,6 +46,10 @@ public final class ThemeManager implements AutoCloseable {
 
     public boolean isDarkNow() {
         return currentDark;
+    }
+
+    public void setTransitionHandler(TransitionHandler handler) {
+        this.transitionHandler = handler;
     }
 
     public void setMode(ThemeMode mode) {
@@ -93,14 +103,21 @@ public final class ThemeManager implements AutoCloseable {
     private void applyAndNotify(boolean forceNotify) {
         boolean nextDark = settings.themeMode().isDarkAt(LocalTime.now());
         boolean changed = nextDark != currentDark;
-        currentDark = nextDark;
-        for (Parent root : roots) {
-            applyClasses(root, currentDark);
-        }
-        if (changed || forceNotify) {
-            for (Runnable listener : List.copyOf(listeners)) {
-                listener.run();
+        Runnable apply = () -> {
+            currentDark = nextDark;
+            for (Parent root : List.copyOf(roots)) {
+                applyClasses(root, nextDark);
             }
+            if (changed || forceNotify) {
+                for (Runnable listener : List.copyOf(listeners)) {
+                    listener.run();
+                }
+            }
+        };
+        if (changed && transitionHandler != null) {
+            transitionHandler.transition(apply);
+        } else {
+            apply.run();
         }
     }
 
@@ -115,6 +132,7 @@ public final class ThemeManager implements AutoCloseable {
     @Override
     public void close() {
         autoSwitchTicker.stop();
+        transitionHandler = null;
         listeners.clear();
         roots.clear();
     }
