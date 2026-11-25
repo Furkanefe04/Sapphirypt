@@ -92,3 +92,28 @@ jobs:
             build/distributions/Sapphirypt-linux-portable.tar.gz
             build/distributions/*.sha256
             build/distributions/*/*.sha256
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: [build-windows, build-linux]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download built packages
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten release assets
+        run: |
+          mkdir -p release-assets
+          find artifacts -type f -exec cp -v {} release-assets/ \;
+          ls -lh release-assets
+
+      - name: Create / update GitHub Release with packaged binaries
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: release-assets/*
