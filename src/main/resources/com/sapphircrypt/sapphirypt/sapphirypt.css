@@ -366,6 +366,22 @@
     -fx-font-weight: bold;
 }
 
+.theme-dark .segmented-indicator {
+    -fx-background-color: linear-gradient(to bottom right, #3B82F6, #1D4ED8);
+    -fx-border-color: rgba(147, 197, 253, 0.45);
+    -fx-border-width: 1px;
+    -fx-border-radius: 8px;
+    -fx-background-radius: 8px;
+}
+
+.theme-dark .segmented-btn-sliding-active,
+.theme-dark .segmented-btn-sliding-active:hover {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-text-fill: #FFFFFF;
+    -fx-font-weight: bold;
+}
+
 .theme-dark .stepper-pill {
     -fx-background-color: #131F3B;
     -fx-text-fill: #94A3B8;
@@ -923,6 +939,22 @@
     -fx-border-color: #2563EB;
     -fx-border-radius: 8px;
     -fx-background-radius: 8px;
+    -fx-font-weight: bold;
+}
+
+.theme-light .segmented-indicator {
+    -fx-background-color: linear-gradient(to bottom right, #3B82F6, #1D4ED8);
+    -fx-border-color: rgba(37, 99, 235, 0.35);
+    -fx-border-width: 1px;
+    -fx-border-radius: 8px;
+    -fx-background-radius: 8px;
+}
+
+.theme-light .segmented-btn-sliding-active,
+.theme-light .segmented-btn-sliding-active:hover {
+    -fx-background-color: transparent;
+    -fx-border-color: transparent;
+    -fx-text-fill: #FFFFFF;
     -fx-font-weight: bold;
 }
 

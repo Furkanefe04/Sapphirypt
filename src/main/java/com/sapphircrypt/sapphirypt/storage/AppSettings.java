@@ -19,6 +19,9 @@ public final class AppSettings {
     private int maxWorkersOverride = 0; // 0 = automatic
     private int autoLockMinutes = 10;   // 0 = disabled
     private boolean keepUnlockedDuringTransfers = true;
+    private boolean autoCompactOnClose = false;
+    private String defaultViewMode = "GRID";
+    private boolean previewEnabledByDefault = true;
     private ThemeMode themeMode = ThemeMode.DARK;
     private final List<Path> recentVaults = new ArrayList<>();
 
@@ -47,6 +50,9 @@ public final class AppSettings {
             settings.maxWorkersOverride = parseInt(props.getProperty("maxWorkersOverride"), 0, 0, 16);
             settings.autoLockMinutes = parseInt(props.getProperty("autoLockMinutes"), 10, 0, 240);
             settings.keepUnlockedDuringTransfers = Boolean.parseBoolean(props.getProperty("keepUnlockedDuringTransfers", "true"));
+            settings.autoCompactOnClose = Boolean.parseBoolean(props.getProperty("autoCompactOnClose", "false"));
+            settings.setDefaultViewMode(props.getProperty("defaultViewMode", "GRID"));
+            settings.previewEnabledByDefault = Boolean.parseBoolean(props.getProperty("previewEnabledByDefault", "true"));
             String themeStr = props.getProperty("themeMode", ThemeMode.DARK.name());
             try {
                 settings.themeMode = ThemeMode.valueOf(themeStr);
@@ -79,6 +85,9 @@ public final class AppSettings {
             props.setProperty("maxWorkersOverride", Integer.toString(maxWorkersOverride));
             props.setProperty("autoLockMinutes", Integer.toString(autoLockMinutes));
             props.setProperty("keepUnlockedDuringTransfers", Boolean.toString(keepUnlockedDuringTransfers));
+            props.setProperty("autoCompactOnClose", Boolean.toString(autoCompactOnClose));
+            props.setProperty("defaultViewMode", defaultViewMode);
+            props.setProperty("previewEnabledByDefault", Boolean.toString(previewEnabledByDefault));
             props.setProperty("themeMode", themeMode.name());
             props.setProperty("recentCount", Integer.toString(recentVaults.size()));
             for (int i = 0; i < recentVaults.size(); i++) {
@@ -121,6 +130,34 @@ public final class AppSettings {
 
     public void setKeepUnlockedDuringTransfers(boolean keepUnlockedDuringTransfers) {
         this.keepUnlockedDuringTransfers = keepUnlockedDuringTransfers;
+    }
+
+    public boolean autoCompactOnClose() {
+        return autoCompactOnClose;
+    }
+
+    public void setAutoCompactOnClose(boolean autoCompactOnClose) {
+        this.autoCompactOnClose = autoCompactOnClose;
+    }
+
+    public String defaultViewMode() {
+        return defaultViewMode;
+    }
+
+    public boolean defaultGridView() {
+        return !"LIST".equalsIgnoreCase(defaultViewMode);
+    }
+
+    public void setDefaultViewMode(String mode) {
+        this.defaultViewMode = "LIST".equalsIgnoreCase(mode) ? "LIST" : "GRID";
+    }
+
+    public boolean previewEnabledByDefault() {
+        return previewEnabledByDefault;
+    }
+
+    public void setPreviewEnabledByDefault(boolean previewEnabledByDefault) {
+        this.previewEnabledByDefault = previewEnabledByDefault;
     }
 
     public ThemeMode themeMode() {

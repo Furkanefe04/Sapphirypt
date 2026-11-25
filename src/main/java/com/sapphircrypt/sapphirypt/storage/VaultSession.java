@@ -462,9 +462,19 @@ public final class VaultSession implements AutoCloseable {
         return snap.copyMutable();
     }
 
+    public static final long AUTO_COMPACT_MIN_ORPHAN_BYTES = 64L * 1024L;
+
     public StorageStats getStorageStats() throws VaultLockedException, IOException {
         ensureOpen();
         return this.cachedStorageStats;
+    }
+
+    public boolean hasReclaimableSpaceForAutoCompact() {
+        if (isClosed()) {
+            return false;
+        }
+        StorageStats st = this.cachedStorageStats;
+        return st != null && st.orphanBytes() >= AUTO_COMPACT_MIN_ORPHAN_BYTES;
     }
 
     public BlockCache.CacheStats getCacheStats() {

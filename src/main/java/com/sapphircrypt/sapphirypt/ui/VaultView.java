@@ -13,8 +13,10 @@ import com.sapphircrypt.sapphirypt.ui.VaultDialogs.ConflictAction;
 import com.sapphircrypt.sapphirypt.ui.VaultDialogs.ConflictResolution;
 import javafx.animation.FadeTransition;
 import javafx.animation.ParallelTransition;
+import javafx.animation.ScaleTransition;
 import javafx.animation.TranslateTransition;
 import javafx.application.Platform;
+import javafx.beans.binding.Bindings;
 import javafx.beans.property.ReadOnlyObjectWrapper;
 import javafx.beans.property.ReadOnlyStringWrapper;
 import javafx.geometry.Insets;
@@ -47,6 +49,9 @@ import javafx.scene.control.TreeItem;
 import javafx.scene.control.TreeView;
 import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
+import javafx.scene.image.PixelFormat;
+import javafx.scene.image.PixelWriter;
+import javafx.scene.image.WritableImage;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.input.DataFormat;
 import javafx.scene.input.Dragboard;
@@ -67,6 +72,9 @@ import javafx.stage.Window;
 import javafx.util.Duration;
 
 import java.awt.Desktop;
+import java.awt.Graphics2D;
+import java.awt.image.BufferedImage;
+import javax.imageio.ImageIO;
 import java.io.ByteArrayInputStream;
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -74,9 +82,11 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -95,13 +105,14 @@ public final class VaultView extends StackPane implements AutoCloseable {
 
     private static final DataFormat INTERNAL_ENTRY_IDS = new DataFormat("application/x-sapphirypt-entry-ids");
     private static final long MAX_TEXT_PREVIEW_BYTES = 2L * 1024L * 1024L;
-    private static final long MAX_IMAGE_PREVIEW_BYTES = 15L * 1024L * 1024L;
+    private static final long MAX_IMAGE_PREVIEW_BYTES = 30L * 1024L * 1024L;
 
     private static final Set<String> TEXT_EXTENSIONS = Set.of(
             "txt", "md", "json", "xml", "csv", "log", "java", "kt", "kts", "gradle",
             "py", "js", "ts", "html", "css", "yml", "yaml", "properties", "ini",
             "sql", "sh", "bat", "conf", "cfg", "toml");
-    private static final Set<String> IMAGE_EXTENSIONS = Set.of("png", "jpg", "jpeg", "gif", "bmp");
+    private static final Set<String> IMAGE_EXTENSIONS = Set.of(
+            "png", "jpg", "jpeg", "jfif", "gif", "bmp", "tif", "tiff", "webp");
 
     private enum ClipboardMode {
         COPY, CUT
@@ -122,6 +133,7 @@ public final class VaultView extends StackPane implements AutoCloseable {
     private final Consumer<Path> onVaultRenamed;
     private final Runnable onVaultDeleted;
     private final ExecutorService bgExecutor;
+    private final ExecutorService previewExecutor;
     private final Runnable themeListener = this::refreshThemeSensitiveUi;
 
     private UUID currentFolderId = VaultMetadata.ROOT_ID;
@@ -130,9 +142,13 @@ public final class VaultView extends StackPane implements AutoCloseable {
     private ClipboardMode clipboardMode;
 
     // View & selection state
-    private ViewMode viewMode = ViewMode.LIST;
+    private ViewMode viewMode = ViewMode.GRID;
     private List<EntryRow> currentDisplayedRows = List.of();
     private final Set<UUID> gridSelectedIds = new LinkedHashSet<>();
+    private Set<UUID> lastDisplayedIds = new LinkedHashSet<>();
+    private UUID lastDisplayedFolderId;
+    private String lastFilterSignature = "";
+    private final Set<UUID> pendingAnimatedRowIds = new HashSet<>();
 
     // Top action bar components
     private final TreeView<VaultEntry> folderTree = new TreeView<>();
@@ -142,6 +158,7 @@ public final class VaultView extends StackPane implements AutoCloseable {
     private final ComboBox<String> extFilterCombo = new ComboBox<>();
     private final Button listModeBtn = new Button();
     private final Button gridModeBtn = new Button();
+    private MotionFx.SegmentedSwitch viewSwitch;
     private final Button exportBtn = new Button("Dışa Aktar");
     private final ToggleButton previewToggle = new ToggleButton("Önizleme");
 
@@ -182,7 +199,7 @@ public final class VaultView extends StackPane implements AutoCloseable {
 
     private SplitPane mainSplit;
     private boolean inspectorVisible = true;
-    private UUID lastPreviewedId;
+    private volatile UUID lastPreviewedId;
 
     public VaultView(
             VaultSession session,
@@ -204,6 +221,14 @@ public final class VaultView extends StackPane implements AutoCloseable {
             t.setDaemon(true);
             return t;
         });
+        this.previewExecutor = Executors.newSingleThreadExecutor(r -> {
+            Thread t = new Thread(r, "sapphirypt-preview");
+            t.setDaemon(true);
+            return t;
+        });
+
+        this.viewMode = settings.defaultGridView() ? ViewMode.GRID : ViewMode.LIST;
+        this.inspectorVisible = settings.previewEnabledByDefault();
 
         buildUi();
         themeManager.addListener(themeListener);
@@ -239,6 +264,11 @@ public final class VaultView extends StackPane implements AutoCloseable {
         statusEnvLbl.setText(session.cpuProfile().displayName() + " • " + lockDesc);
     }
 
+    public void applyViewSettings() {
+        setViewMode(settings.defaultGridView() ? ViewMode.GRID : ViewMode.LIST);
+        toggleInspector(settings.previewEnabledByDefault());
+    }
+
     private void buildUi() {
         BorderPane rootLayout = new BorderPane();
         rootLayout.setTop(buildActionToolbar());
@@ -248,9 +278,15 @@ public final class VaultView extends StackPane implements AutoCloseable {
         VBox centerArea = buildCenterArea();
         buildInspectorPane();
 
-        mainSplit = new SplitPane(leftSidebar, centerArea, inspectorPane);
-        mainSplit.setOrientation(Orientation.HORIZONTAL);
-        mainSplit.setDividerPositions(0.21, 0.74);
+        if (inspectorVisible) {
+            mainSplit = new SplitPane(leftSidebar, centerArea, inspectorPane);
+            mainSplit.setOrientation(Orientation.HORIZONTAL);
+            mainSplit.setDividerPositions(0.21, 0.74);
+        } else {
+            mainSplit = new SplitPane(leftSidebar, centerArea);
+            mainSplit.setOrientation(Orientation.HORIZONTAL);
+            mainSplit.setDividerPositions(0.24);
+        }
         rootLayout.setCenter(mainSplit);
 
         buildFloatingProgressPill();
@@ -279,13 +315,15 @@ public final class VaultView extends StackPane implements AutoCloseable {
         searchField.setPrefWidth(220);
         searchField.textProperty().addListener((o, a, b) -> refreshTableOnly());
 
+        MotionFx.enhanceCheckBox(globalSearchCheck);
         globalSearchCheck.selectedProperty().addListener((o, a, b) -> refreshTableOnly());
 
         extFilterCombo.getItems().add("Tüm Türler");
         extFilterCombo.setValue("Tüm Türler");
+        MotionFx.enhanceComboBox(extFilterCombo);
         extFilterCombo.valueProperty().addListener((o, a, b) -> refreshTableOnly());
 
-        listModeBtn.getStyleClass().addAll("segmented-btn", "segmented-btn-active");
+        listModeBtn.getStyleClass().add("segmented-btn");
         listModeBtn.setTooltip(new Tooltip("Liste Görünümü"));
         listModeBtn.setOnAction(e -> setViewMode(ViewMode.LIST));
 
@@ -293,11 +331,11 @@ public final class VaultView extends StackPane implements AutoCloseable {
         gridModeBtn.setTooltip(new Tooltip("Kart / Izgara Görünümü"));
         gridModeBtn.setOnAction(e -> setViewMode(ViewMode.GRID));
 
-        HBox viewSwitch = new HBox(2, listModeBtn, gridModeBtn);
-        viewSwitch.getStyleClass().add("segmented-bar");
-        viewSwitch.setAlignment(Pos.CENTER);
+        viewSwitch = new MotionFx.SegmentedSwitch(2, listModeBtn, gridModeBtn);
+        viewSwitch.setActive(viewMode == ViewMode.LIST ? listModeBtn : gridModeBtn, false);
 
-        previewToggle.setSelected(true);
+        previewToggle.setSelected(inspectorVisible);
+        MotionFx.attachPressSpring(previewToggle);
         previewToggle.setOnAction(e -> toggleInspector(previewToggle.isSelected()));
 
         Region spacer = new Region();
@@ -458,8 +496,11 @@ public final class VaultView extends StackPane implements AutoCloseable {
         configureTable();
         configureGrid();
 
-        gridScroll.setVisible(false);
-        gridScroll.setManaged(false);
+        boolean isList = viewMode == ViewMode.LIST;
+        entryTable.setVisible(isList);
+        entryTable.setManaged(isList);
+        gridScroll.setVisible(!isList);
+        gridScroll.setManaged(!isList);
         contentSwitchPane.getChildren().setAll(entryTable, gridScroll);
         VBox.setVgrow(contentSwitchPane, Priority.ALWAYS);
 
@@ -538,7 +579,20 @@ public final class VaultView extends StackPane implements AutoCloseable {
         });
 
         entryTable.setRowFactory(tv -> {
-            TableRow<EntryRow> row = new TableRow<>();
+            TableRow<EntryRow> row = new TableRow<>() {
+                @Override
+                protected void updateItem(EntryRow item, boolean empty) {
+                    super.updateItem(item, empty);
+                    if (!empty && item != null && pendingAnimatedRowIds.remove(item.entry().id())) {
+                        MotionFx.playEntrance(this, 8.0, 0.0, 210.0);
+                    } else {
+                        setOpacity(1.0);
+                        setScaleX(1.0);
+                        setScaleY(1.0);
+                        setTranslateY(0.0);
+                    }
+                }
+            };
             row.setOnMouseClicked(ev -> {
                 if (ev.getClickCount() == 2 && !row.isEmpty()) {
                     openOrPreviewEntry(row.getItem().entry());
@@ -660,12 +714,8 @@ public final class VaultView extends StackPane implements AutoCloseable {
         gridScroll.setVisible(!isList);
         gridScroll.setManaged(!isList);
 
-        if (isList) {
-            listModeBtn.getStyleClass().add("segmented-btn-active");
-            gridModeBtn.getStyleClass().remove("segmented-btn-active");
-        } else {
-            gridModeBtn.getStyleClass().add("segmented-btn-active");
-            listModeBtn.getStyleClass().remove("segmented-btn-active");
+        viewSwitch.setActive(isList ? listModeBtn : gridModeBtn, true);
+        if (!isList) {
             rebuildGridCards();
         }
         MotionFx.playEntrance(isList ? entryTable : gridScroll, 8.0, 0.0, 190.0);
@@ -674,6 +724,10 @@ public final class VaultView extends StackPane implements AutoCloseable {
     }
 
     private void rebuildGridCards() {
+        rebuildGridCards(Set.of());
+    }
+
+    private void rebuildGridCards(Set<UUID> newlyAddedIds) {
         gridFlow.getChildren().clear();
         if (currentDisplayedRows.isEmpty()) {
             Label emptyLbl = new Label("Bu klasör boş. Dosya ekleyin veya sürükleyip bırakın.");
@@ -683,6 +737,7 @@ public final class VaultView extends StackPane implements AutoCloseable {
             return;
         }
 
+        int addedAnimIdx = 0;
         for (EntryRow row : currentDisplayedRows) {
             VaultEntry e = row.entry();
             boolean selected = gridSelectedIds.contains(e.id());
@@ -775,8 +830,44 @@ public final class VaultView extends StackPane implements AutoCloseable {
             }
 
             MotionFx.attachHoverLift(card, -2.5, 1.02);
+            if (newlyAddedIds != null && newlyAddedIds.contains(e.id()) && addedAnimIdx < 12) {
+                playGridCardPopIn(card, addedAnimIdx * 22.0);
+                addedAnimIdx++;
+            }
             gridFlow.getChildren().add(card);
         }
+    }
+
+    private static void playGridCardPopIn(Node card, double delayMs) {
+        card.setOpacity(0.0);
+        card.setScaleX(0.88);
+        card.setScaleY(0.88);
+        card.setTranslateY(12.0);
+
+        FadeTransition fade = new FadeTransition(Duration.millis(220), card);
+        fade.setToValue(1.0);
+        fade.setInterpolator(MotionFx.EASE_OUT_EXPO);
+
+        ScaleTransition scale = new ScaleTransition(Duration.millis(220), card);
+        scale.setToX(1.0);
+        scale.setToY(1.0);
+        scale.setInterpolator(MotionFx.EASE_OUT_BACK);
+
+        TranslateTransition slide = new TranslateTransition(Duration.millis(220), card);
+        slide.setToY(0.0);
+        slide.setInterpolator(MotionFx.EASE_OUT_EXPO);
+
+        ParallelTransition pt = new ParallelTransition(fade, scale, slide);
+        if (delayMs > 0.0) {
+            pt.setDelay(Duration.millis(delayMs));
+        }
+        pt.setOnFinished(e -> {
+            card.setOpacity(1.0);
+            card.setScaleX(1.0);
+            card.setScaleY(1.0);
+            card.setTranslateY(0.0);
+        });
+        pt.play();
     }
 
     private void updateGridSelectionStyles() {
@@ -948,6 +1039,11 @@ public final class VaultView extends StackPane implements AutoCloseable {
             if (!mainSplit.getItems().contains(inspectorPane)) {
                 mainSplit.getItems().add(inspectorPane);
                 mainSplit.setDividerPositions(0.21, 0.74);
+                MotionFx.playSlideSwitch(inspectorPane, 18.0, 200.0);
+            }
+            EntryRow sel = primarySelectedRow();
+            if (sel != null) {
+                updateInspector(sel);
             }
         } else {
             mainSplit.getItems().remove(inspectorPane);
@@ -1087,10 +1183,33 @@ public final class VaultView extends StackPane implements AutoCloseable {
 
         List<VaultEntry> matches = meta.search(scopeId, recursive, query, ext);
         List<EntryRow> rows = new ArrayList<>(matches.size());
+        Set<UUID> currentIds = new LinkedHashSet<>(matches.size());
         for (VaultEntry e : matches) {
             long size = e.isFolder() ? meta.computeFolderLogicalSize(e.id()) : e.logicalSize();
             rows.add(new EntryRow(e, size));
+            currentIds.add(e.id());
         }
+
+        String filterSig = (query == null ? "" : query.trim()) + "|" + ext + "|" + global;
+        boolean sameScope = Objects.equals(currentFolderId, lastDisplayedFolderId)
+                && filterSig.equals(lastFilterSignature);
+        Set<UUID> addedIds = new LinkedHashSet<>();
+        if (sameScope) {
+            for (UUID id : currentIds) {
+                if (!lastDisplayedIds.contains(id)) {
+                    addedIds.add(id);
+                }
+            }
+        }
+        lastDisplayedFolderId = currentFolderId;
+        lastFilterSignature = filterSig;
+        lastDisplayedIds = currentIds;
+
+        pendingAnimatedRowIds.clear();
+        if (!addedIds.isEmpty() && viewMode == ViewMode.LIST) {
+            pendingAnimatedRowIds.addAll(addedIds);
+        }
+
         currentDisplayedRows = rows;
         entryTable.getItems().setAll(rows);
         if (!entryTable.getSortOrder().isEmpty()) {
@@ -1098,7 +1217,7 @@ public final class VaultView extends StackPane implements AutoCloseable {
         }
         gridSelectedIds.retainAll(rows.stream().map(r -> r.entry().id()).toList());
         if (viewMode == ViewMode.GRID) {
-            rebuildGridCards();
+            rebuildGridCards(addedIds);
         }
         refreshStatusCounts();
     }
@@ -1214,8 +1333,9 @@ public final class VaultView extends StackPane implements AutoCloseable {
         Label loading = new Label("Metin önizlemesi çözülüyor...");
         loading.getStyleClass().add("muted-text");
         previewContainer.getChildren().setAll(loading);
-        bgExecutor.submit(() -> {
+        previewExecutor.submit(() -> {
             try {
+                if (!entry.id().equals(lastPreviewedId)) return;
                 byte[] bytes = session.readFileBytes(entry.id(), MAX_TEXT_PREVIEW_BYTES, CancellationToken.NONE);
                 String text = new String(bytes, StandardCharsets.UTF_8);
                 Platform.runLater(() -> {
@@ -1243,22 +1363,30 @@ public final class VaultView extends StackPane implements AutoCloseable {
         Label loading = new Label("Görsel önizlemesi çözülüyor...");
         loading.getStyleClass().add("muted-text");
         previewContainer.getChildren().setAll(loading);
-        bgExecutor.submit(() -> {
+        previewExecutor.submit(() -> {
             try {
+                if (!entry.id().equals(lastPreviewedId)) return;
                 byte[] bytes = session.readFileBytes(entry.id(), MAX_IMAGE_PREVIEW_BYTES, CancellationToken.NONE);
-                Image img = new Image(new ByteArrayInputStream(bytes));
+                Image img = decodePreviewImage(bytes);
                 Platform.runLater(() -> {
                     if (!entry.id().equals(lastPreviewedId)) return;
+                    if (img == null) {
+                        Label unsupported = new Label("Bu görsel biçimi dahili önizlemede desteklenmiyor.\n'Harici Uygulamada Aç' veya 'Dışa Aktar' kullanabilirsiniz.");
+                        unsupported.setWrapText(true);
+                        unsupported.getStyleClass().add("muted-text");
+                        previewContainer.getChildren().setAll(unsupported);
+                        MotionFx.playEntrance(unsupported, 6.0, 0.0, 180.0);
+                        return;
+                    }
                     ImageView view = new ImageView(img);
                     view.setPreserveRatio(true);
-                    view.setFitWidth(275);
-                    view.setFitHeight(260);
-                    ScrollPane scroll = new ScrollPane(new StackPane(view));
-                    scroll.setFitToWidth(true);
-                    scroll.setFitToHeight(true);
-                    scroll.getStyleClass().add("transparent-scroll");
-                    previewContainer.getChildren().setAll(scroll);
-                    MotionFx.playEntrance(scroll, 6.0, 0.0, 180.0);
+                    view.setSmooth(true);
+                    view.fitWidthProperty().bind(Bindings.max(120.0, previewContainer.widthProperty().subtract(24.0)));
+                    view.fitHeightProperty().bind(Bindings.max(120.0, previewContainer.heightProperty().subtract(24.0)));
+                    StackPane frame = new StackPane(view);
+                    frame.setAlignment(Pos.CENTER);
+                    previewContainer.getChildren().setAll(frame);
+                    MotionFx.playEntrance(frame, 6.0, 0.0, 180.0);
                 });
             } catch (Exception ex) {
                 Platform.runLater(() -> {
@@ -1270,6 +1398,52 @@ public final class VaultView extends StackPane implements AutoCloseable {
                 });
             }
         });
+    }
+
+    private static Image decodePreviewImage(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) {
+            return null;
+        }
+        Image fxImg = new Image(new ByteArrayInputStream(bytes));
+        if (!fxImg.isError() && fxImg.getWidth() > 0 && fxImg.getHeight() > 0) {
+            return fxImg;
+        }
+        BufferedImage fallback = decodeWithImageIo(bytes);
+        if (fallback == null) {
+            return null;
+        }
+        int w = fallback.getWidth();
+        int h = fallback.getHeight();
+        int[] pixels = fallback.getRGB(0, 0, w, h, null, 0, w);
+        WritableImage writable = new WritableImage(w, h);
+        PixelWriter pw = writable.getPixelWriter();
+        pw.setPixels(0, 0, w, h, PixelFormat.getIntArgbInstance(), pixels, 0, w);
+        return writable;
+    }
+
+    static BufferedImage decodeWithImageIo(byte[] bytes) {
+        if (bytes == null || bytes.length == 0) {
+            return null;
+        }
+        try {
+            BufferedImage decoded = ImageIO.read(new ByteArrayInputStream(bytes));
+            if (decoded == null || decoded.getWidth() <= 0 || decoded.getHeight() <= 0) {
+                return null;
+            }
+            if (decoded.getType() == BufferedImage.TYPE_INT_ARGB) {
+                return decoded;
+            }
+            BufferedImage argb = new BufferedImage(decoded.getWidth(), decoded.getHeight(), BufferedImage.TYPE_INT_ARGB);
+            Graphics2D g = argb.createGraphics();
+            try {
+                g.drawImage(decoded, 0, 0, null);
+            } finally {
+                g.dispose();
+            }
+            return argb;
+        } catch (Exception | LinkageError ignored) {
+            return null;
+        }
     }
 
     private void openOrPreviewEntry(VaultEntry entry) {
@@ -1444,11 +1618,37 @@ public final class VaultView extends StackPane implements AutoCloseable {
                 true,
                 confirmed -> {
                     if (!confirmed) return;
-                    runBackgroundTask("Öğeler siliniyor...", false, (cancel, progress) -> {
-                        session.deleteEntries(ids);
-                        return ids.size() + " öğe silindi";
-                    });
+                    Set<UUID> idSet = new HashSet<>(ids);
+                    List<Node> nodesToAnimate = collectVisibleNodesForIds(idSet);
+                    MotionFx.playExitRemove(nodesToAnimate, () ->
+                            runBackgroundTask("Öğeler siliniyor...", false, (cancel, progress) -> {
+                                session.deleteEntries(ids);
+                                return ids.size() + " öğe silindi";
+                            }));
                 });
+    }
+
+    private List<Node> collectVisibleNodesForIds(Set<UUID> idSet) {
+        List<Node> nodes = new ArrayList<>();
+        if (idSet == null || idSet.isEmpty()) {
+            return nodes;
+        }
+        if (viewMode == ViewMode.GRID) {
+            for (Node child : gridFlow.getChildren()) {
+                if (child.getUserData() instanceof UUID id && idSet.contains(id)) {
+                    nodes.add(child);
+                }
+            }
+        } else {
+            for (Node cell : entryTable.lookupAll(".table-row-cell")) {
+                if (cell instanceof TableRow<?> row && !row.isEmpty()
+                        && row.getItem() instanceof EntryRow er
+                        && idSet.contains(er.entry().id())) {
+                    nodes.add(row);
+                }
+            }
+        }
+        return nodes;
     }
 
     private void handleClipboard(ClipboardMode mode) {
@@ -1559,7 +1759,8 @@ public final class VaultView extends StackPane implements AutoCloseable {
                     }
                 }));
 
-        AutoLockMonitor.ActivityHold hold = autoLockMonitor != null ? autoLockMonitor.beginActivityHold() : () -> {};
+        AutoLockMonitor.ActivityHold hold = autoLockMonitor != null ? autoLockMonitor.beginActivityHold() : () -> {
+        };
         try {
             bgExecutor.submit(() -> {
                 try {
@@ -1649,5 +1850,6 @@ public final class VaultView extends StackPane implements AutoCloseable {
             tok.cancel();
         }
         bgExecutor.shutdownNow();
+        previewExecutor.shutdownNow();
     }
 }

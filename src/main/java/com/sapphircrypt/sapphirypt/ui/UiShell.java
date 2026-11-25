@@ -90,6 +90,7 @@ public final class UiShell extends StackPane {
     private BooleanSupplier activeDrawerCanClose = () -> true;
     private Runnable activeDrawerOnClose;
     private boolean drawerOpen;
+    private ParallelTransition activeDrawerAnim;
 
     // Overlay host
     private final StackPane overlayLayer = new StackPane();
@@ -217,14 +218,17 @@ public final class UiShell extends StackPane {
 
         Node emblem = SapphireIcons.createSapphireVaultEmblem(20);
         titleLabel.getStyleClass().add("title-bar-title");
+        titleLabel.setMinWidth(0);
 
         Region spacer = new Region();
         HBox.setHgrow(spacer, Priority.ALWAYS);
 
         contextActionsBox.setAlignment(Pos.CENTER_RIGHT);
+        contextActionsBox.setMinWidth(Region.USE_PREF_SIZE);
 
         themeCycleBtn.getStyleClass().add("title-bar-btn");
         themeCycleBtn.setFocusTraversable(false);
+        themeCycleBtn.setMinWidth(Region.USE_PREF_SIZE);
         themeCycleBtn.setOnAction(e -> {
             themeManager.cycleMode();
             MotionFx.playIconSpin(themeCycleBtn.getGraphic());
@@ -233,6 +237,7 @@ public final class UiShell extends StackPane {
 
         settingsBtn.getStyleClass().add("title-bar-btn");
         settingsBtn.setFocusTraversable(false);
+        settingsBtn.setMinWidth(Region.USE_PREF_SIZE);
         settingsBtn.setTooltip(new Tooltip("Ayarlar"));
         settingsBtn.setOnAction(e -> {
             if (onOpenSettings != null) {
@@ -248,16 +253,19 @@ public final class UiShell extends StackPane {
 
         minBtn.getStyleClass().add("title-bar-btn");
         minBtn.setFocusTraversable(false);
+        minBtn.setMinWidth(Region.USE_PREF_SIZE);
         minBtn.setTooltip(new Tooltip("Küçült"));
         minBtn.setOnAction(e -> stage.setIconified(true));
 
         maxBtn.getStyleClass().add("title-bar-btn");
         maxBtn.setFocusTraversable(false);
+        maxBtn.setMinWidth(Region.USE_PREF_SIZE);
         maxBtn.setTooltip(new Tooltip("Büyüt / Geri Yükle"));
         maxBtn.setOnAction(e -> toggleMaximize());
 
         closeBtn.getStyleClass().addAll("title-bar-btn", "title-bar-close");
         closeBtn.setFocusTraversable(false);
+        closeBtn.setMinWidth(Region.USE_PREF_SIZE);
         closeBtn.setTooltip(new Tooltip("Kapat"));
         closeBtn.setOnAction(e -> stage.fireEvent(
                 new javafx.stage.WindowEvent(stage, javafx.stage.WindowEvent.WINDOW_CLOSE_REQUEST)));
@@ -333,6 +341,7 @@ public final class UiShell extends StackPane {
         toastLayer.setPickOnBounds(false);
         toastLayer.setPadding(new Insets(0, 18, 22, 18));
         toastLayer.setMaxWidth(380);
+        toastLayer.setMaxHeight(Region.USE_PREF_SIZE);
         StackPane.setAlignment(toastLayer, Pos.BOTTOM_RIGHT);
     }
 
@@ -430,6 +439,11 @@ public final class UiShell extends StackPane {
             Node footerContent,
             BooleanSupplier canCloseGuard,
             Runnable onCloseCallback) {
+        if (activeDrawerAnim != null) {
+            activeDrawerAnim.setOnFinished(null);
+            activeDrawerAnim.stop();
+            activeDrawerAnim = null;
+        }
         activeDrawerCanClose = canCloseGuard != null ? canCloseGuard : () -> true;
         activeDrawerOnClose = onCloseCallback;
 
@@ -492,7 +506,14 @@ public final class UiShell extends StackPane {
         slideIn.setToX(0.0);
         slideIn.setInterpolator(MotionFx.EASE_OUT_EXPO);
 
-        new ParallelTransition(fadeBg, slideIn).play();
+        ParallelTransition inAnim = new ParallelTransition(fadeBg, slideIn);
+        inAnim.setOnFinished(e -> {
+            if (activeDrawerAnim == inAnim) {
+                activeDrawerAnim = null;
+            }
+        });
+        activeDrawerAnim = inAnim;
+        inAnim.play();
         MotionFx.playEntrance(bodyContent, 8.0, 45.0, 220.0);
     }
 
@@ -506,6 +527,11 @@ public final class UiShell extends StackPane {
         }
         if (!force && activeDrawerCanClose != null && !activeDrawerCanClose.getAsBoolean()) {
             return;
+        }
+        if (activeDrawerAnim != null) {
+            activeDrawerAnim.setOnFinished(null);
+            activeDrawerAnim.stop();
+            activeDrawerAnim = null;
         }
         drawerOpen = false;
         Runnable onClose = activeDrawerOnClose;
@@ -524,6 +550,12 @@ public final class UiShell extends StackPane {
 
         ParallelTransition out = new ParallelTransition(fadeBg, slideOut);
         out.setOnFinished(e -> {
+            if (activeDrawerAnim == out) {
+                activeDrawerAnim = null;
+            }
+            if (drawerOpen) {
+                return;
+            }
             drawerLayer.setVisible(false);
             drawerLayer.setManaged(false);
             drawerPanel.getChildren().clear();
@@ -531,6 +563,7 @@ public final class UiShell extends StackPane {
                 onClose.run();
             }
         });
+        activeDrawerAnim = out;
         out.play();
     }
 

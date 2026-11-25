@@ -1,23 +1,37 @@
 package com.sapphircrypt.sapphirypt.ui;
 
+import javafx.animation.Animation;
 import javafx.animation.FadeTransition;
 import javafx.animation.Interpolator;
 import javafx.animation.KeyFrame;
 import javafx.animation.KeyValue;
 import javafx.animation.ParallelTransition;
+import javafx.animation.RotateTransition;
 import javafx.animation.ScaleTransition;
 import javafx.animation.Timeline;
 import javafx.animation.TranslateTransition;
+import javafx.application.Platform;
+import javafx.beans.property.DoubleProperty;
+import javafx.beans.property.SimpleDoubleProperty;
+import javafx.beans.value.ChangeListener;
+import javafx.geometry.Bounds;
+import javafx.geometry.Pos;
 import javafx.scene.Node;
+import javafx.scene.control.Button;
+import javafx.scene.control.CheckBox;
+import javafx.scene.control.ComboBox;
 import javafx.scene.control.ProgressBar;
+import javafx.scene.control.Spinner;
 import javafx.scene.effect.DropShadow;
 import javafx.scene.input.MouseEvent;
+import javafx.scene.layout.HBox;
 import javafx.scene.layout.Region;
 import javafx.scene.layout.StackPane;
 import javafx.scene.paint.Color;
 import javafx.util.Duration;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -315,5 +329,276 @@ public final class MotionFx {
                 Duration.millis(durationMs),
                 new KeyValue(region.prefWidthProperty(), Math.max(0.0, targetWidth), EASE_OUT_EXPO)));
         tl.play();
+    }
+
+    /**
+     * Animates CheckBox checkmark spring-in and box bounce when toggled.
+     */
+    public static void enhanceCheckBox(CheckBox checkBox) {
+        if (checkBox == null) {
+            return;
+        }
+        checkBox.selectedProperty().addListener((obs, oldVal, selected) -> {
+            Node box = checkBox.lookup(".box");
+            Node mark = checkBox.lookup(".mark");
+            if (Boolean.TRUE.equals(selected)) {
+                if (box != null) {
+                    box.setScaleX(0.86);
+                    box.setScaleY(0.86);
+                    ScaleTransition boxPop = new ScaleTransition(Duration.millis(180), box);
+                    boxPop.setToX(1.0);
+                    boxPop.setToY(1.0);
+                    boxPop.setInterpolator(EASE_OUT_BACK);
+                    boxPop.play();
+                }
+                if (mark != null) {
+                    mark.setOpacity(0.0);
+                    mark.setScaleX(0.15);
+                    mark.setScaleY(0.15);
+                    mark.setRotate(-14.0);
+
+                    FadeTransition fade = new FadeTransition(Duration.millis(180), mark);
+                    fade.setFromValue(0.0);
+                    fade.setToValue(1.0);
+                    fade.setInterpolator(EASE_OUT_EXPO);
+
+                    ScaleTransition scale = new ScaleTransition(Duration.millis(220), mark);
+                    scale.setToX(1.0);
+                    scale.setToY(1.0);
+                    scale.setInterpolator(EASE_OUT_BACK);
+
+                    RotateTransition rot = new RotateTransition(Duration.millis(220), mark);
+                    rot.setFromAngle(-14.0);
+                    rot.setToAngle(0.0);
+                    rot.setInterpolator(EASE_OUT_BACK);
+
+                    ParallelTransition pt = new ParallelTransition(fade, scale, rot);
+                    pt.setOnFinished(e -> {
+                        mark.setOpacity(1.0);
+                        mark.setScaleX(1.0);
+                        mark.setScaleY(1.0);
+                        mark.setRotate(0.0);
+                    });
+                    pt.play();
+                }
+            } else if (box != null) {
+                box.setScaleX(0.90);
+                box.setScaleY(0.90);
+                ScaleTransition boxRelease = new ScaleTransition(Duration.millis(150), box);
+                boxRelease.setToX(1.0);
+                boxRelease.setToY(1.0);
+                boxRelease.setInterpolator(EASE_OUT_EXPO);
+                boxRelease.play();
+            }
+        });
+    }
+
+    /**
+     * Adds subtle directional value transition feedback to Spinner edits.
+     */
+    @SuppressWarnings("unchecked")
+    public static <T> void enhanceSpinner(Spinner<T> spinner) {
+        if (spinner == null) {
+            return;
+        }
+        spinner.valueProperty().addListener((obs, oldVal, newVal) -> {
+            Node editor = spinner.getEditor() != null ? spinner.getEditor() : spinner;
+            double fromY = 0.0;
+            if (oldVal instanceof Comparable<?> cmp && newVal != null && oldVal.getClass().isInstance(newVal)) {
+                int diff = ((Comparable<Object>) newVal).compareTo(oldVal);
+                fromY = diff > 0 ? 3.0 : (diff < 0 ? -3.0 : 0.0);
+            }
+            editor.setOpacity(0.55);
+            editor.setTranslateY(fromY);
+
+            FadeTransition fade = new FadeTransition(Duration.millis(140), editor);
+            fade.setToValue(1.0);
+            fade.setInterpolator(EASE_OUT_EXPO);
+
+            TranslateTransition nudge = new TranslateTransition(Duration.millis(140), editor);
+            nudge.setToY(0.0);
+            nudge.setInterpolator(EASE_OUT_EXPO);
+
+            ParallelTransition pt = new ParallelTransition(fade, nudge);
+            pt.setOnFinished(e -> {
+                editor.setOpacity(1.0);
+                editor.setTranslateY(0.0);
+            });
+            pt.play();
+        });
+    }
+
+    /**
+     * Adds soft value-change transition to ComboBox selection changes.
+     */
+    public static <T> void enhanceComboBox(ComboBox<T> comboBox) {
+        if (comboBox == null) {
+            return;
+        }
+        comboBox.valueProperty().addListener((obs, oldVal, newVal) -> {
+            Node cell = comboBox.getButtonCell() != null ? comboBox.getButtonCell() : comboBox.lookup(".text");
+            Node target = cell != null ? cell : comboBox;
+            target.setOpacity(0.60);
+            FadeTransition fade = new FadeTransition(Duration.millis(140), target);
+            fade.setToValue(1.0);
+            fade.setInterpolator(EASE_OUT_EXPO);
+            fade.setOnFinished(e -> target.setOpacity(1.0));
+            fade.play();
+        });
+    }
+
+    /**
+     * Animates nodes out cleanly before removing underlying items.
+     */
+    public static void playExitRemove(List<? extends Node> nodes, Runnable onFinished) {
+        if (nodes == null || nodes.isEmpty()) {
+            if (onFinished != null) {
+                onFinished.run();
+            }
+            return;
+        }
+        ParallelTransition exitAll = new ParallelTransition();
+        for (Node node : nodes) {
+            if (node == null) {
+                continue;
+            }
+            FadeTransition fade = new FadeTransition(Duration.millis(180), node);
+            fade.setToValue(0.0);
+            fade.setInterpolator(EASE_OUT_EXPO);
+
+            ScaleTransition scale = new ScaleTransition(Duration.millis(180), node);
+            scale.setToX(0.86);
+            scale.setToY(0.86);
+            scale.setInterpolator(EASE_OUT_EXPO);
+
+            TranslateTransition lift = new TranslateTransition(Duration.millis(180), node);
+            lift.setToY(-6.0);
+            lift.setInterpolator(EASE_OUT_EXPO);
+
+            exitAll.getChildren().addAll(fade, scale, lift);
+        }
+        if (exitAll.getChildren().isEmpty()) {
+            if (onFinished != null) {
+                onFinished.run();
+            }
+            return;
+        }
+        exitAll.setOnFinished(ev -> {
+            if (onFinished != null) {
+                onFinished.run();
+            }
+        });
+        exitAll.play();
+    }
+
+    /**
+     * Segmented button bar with a smoothly sliding indicator pill underneath the active option.
+     */
+    public static final class SegmentedSwitch extends StackPane {
+        private final Region indicator = new Region();
+        private final HBox row;
+        private final List<Button> buttons;
+        private final DoubleProperty animX = new SimpleDoubleProperty();
+        private final DoubleProperty animY = new SimpleDoubleProperty();
+        private final DoubleProperty animW = new SimpleDoubleProperty();
+        private final DoubleProperty animH = new SimpleDoubleProperty();
+
+        private Button activeButton;
+        private Timeline slideTimeline;
+
+        public SegmentedSwitch(double spacing, Button... buttons) {
+            getStyleClass().add("segmented-bar");
+            this.buttons = Arrays.asList(buttons);
+
+            indicator.getStyleClass().add("segmented-indicator");
+            indicator.setManaged(false);
+            indicator.setMouseTransparent(true);
+            indicator.setVisible(false);
+
+            this.row = new HBox(spacing, buttons);
+            this.row.setAlignment(Pos.CENTER);
+            this.row.setMaxWidth(Double.MAX_VALUE);
+
+            ChangeListener<Number> applyBounds = (obs, o, n) ->
+                    indicator.resizeRelocate(animX.get(), animY.get(), animW.get(), animH.get());
+            animX.addListener(applyBounds);
+            animY.addListener(applyBounds);
+            animW.addListener(applyBounds);
+            animH.addListener(applyBounds);
+
+            getChildren().addAll(indicator, row);
+
+            row.layoutBoundsProperty().addListener((obs, o, n) -> snapToActiveIfIdle());
+            for (Button btn : buttons) {
+                btn.layoutBoundsProperty().addListener((obs, o, n) -> snapToActiveIfIdle());
+            }
+            if (buttons.length > 0) {
+                setActive(buttons[0], false);
+            }
+        }
+
+        public void setActive(Button target, boolean animate) {
+            if (target == null) {
+                return;
+            }
+            this.activeButton = target;
+            for (Button btn : buttons) {
+                btn.getStyleClass().removeAll("segmented-btn-active", "segmented-btn-sliding-active");
+                if (btn == target) {
+                    btn.getStyleClass().add("segmented-btn-sliding-active");
+                }
+            }
+            positionIndicator(target, animate);
+        }
+
+        private void snapToActiveIfIdle() {
+            if (activeButton != null && (slideTimeline == null || slideTimeline.getStatus() != Animation.Status.RUNNING)) {
+                positionIndicator(activeButton, false);
+            }
+        }
+
+        private void positionIndicator(Button target, boolean animate) {
+            Bounds targetInParent = target.getBoundsInParent();
+            if (targetInParent.getWidth() < 1.0 || targetInParent.getHeight() < 1.0) {
+                Platform.runLater(() -> {
+                    if (activeButton == target) {
+                        positionIndicator(target, false);
+                    }
+                });
+                return;
+            }
+            Bounds bounds = row.localToParent(targetInParent);
+            double x = bounds.getMinX();
+            double y = bounds.getMinY();
+            double w = bounds.getWidth();
+            double h = bounds.getHeight();
+            if (w < 1.0 || h < 1.0) {
+                return;
+            }
+
+            if (slideTimeline != null) {
+                slideTimeline.stop();
+                slideTimeline = null;
+            }
+
+            if (!animate || !indicator.isVisible()) {
+                animX.set(x);
+                animY.set(y);
+                animW.set(w);
+                animH.set(h);
+                indicator.setVisible(true);
+                indicator.resizeRelocate(x, y, w, h);
+                return;
+            }
+
+            indicator.setVisible(true);
+            slideTimeline = new Timeline(new KeyFrame(
+                    Duration.millis(220),
+                    new KeyValue(animX, x, EASE_OUT_EXPO),
+                    new KeyValue(animY, y, EASE_OUT_EXPO),
+                    new KeyValue(animW, w, EASE_OUT_EXPO),
+                    new KeyValue(animH, h, EASE_OUT_EXPO)));
+            slideTimeline.play();
+        }
     }
 }

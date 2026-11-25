@@ -407,7 +407,7 @@ public final class VaultDrawers {
         });
 
         Button passwordModeBtn = new Button("Parola ile");
-        passwordModeBtn.getStyleClass().addAll("segmented-btn", "segmented-btn-active");
+        passwordModeBtn.getStyleClass().add("segmented-btn");
         passwordModeBtn.setMaxWidth(Double.MAX_VALUE);
         Button keyModeBtn = new Button("Kurtarma Anahtarı (.key)");
         keyModeBtn.getStyleClass().add("segmented-btn");
@@ -415,8 +415,8 @@ public final class VaultDrawers {
         HBox.setHgrow(passwordModeBtn, Priority.ALWAYS);
         HBox.setHgrow(keyModeBtn, Priority.ALWAYS);
 
-        HBox modeSwitch = new HBox(4, passwordModeBtn, keyModeBtn);
-        modeSwitch.getStyleClass().add("segmented-bar");
+        MotionFx.SegmentedSwitch modeSwitch = new MotionFx.SegmentedSwitch(4, passwordModeBtn, keyModeBtn);
+        modeSwitch.setActive(passwordModeBtn, false);
 
         PasswordInputRow pwInput = new PasswordInputRow("Kasa parolasını girin", themeManager);
         VBox pwSection = new VBox(8, fieldLabel("Kasa Parolası"), pwInput);
@@ -451,8 +451,7 @@ public final class VaultDrawers {
 
         passwordModeBtn.setOnAction(e -> {
             boolean wasKey = useRecoveryKey.getAndSet(false);
-            passwordModeBtn.getStyleClass().add("segmented-btn-active");
-            keyModeBtn.getStyleClass().remove("segmented-btn-active");
+            modeSwitch.setActive(passwordModeBtn, wasKey);
             pwSection.setVisible(true);
             pwSection.setManaged(true);
             keySection.setVisible(false);
@@ -465,8 +464,7 @@ public final class VaultDrawers {
         });
         keyModeBtn.setOnAction(e -> {
             boolean wasPw = !useRecoveryKey.getAndSet(true);
-            keyModeBtn.getStyleClass().add("segmented-btn-active");
-            passwordModeBtn.getStyleClass().remove("segmented-btn-active");
+            modeSwitch.setActive(keyModeBtn, wasPw);
             pwSection.setVisible(false);
             pwSection.setManaged(false);
             keySection.setVisible(true);
@@ -704,6 +702,7 @@ public final class VaultDrawers {
         });
 
         CheckBox deleteKeyCheck = new CheckBox("Seçilen .key kurtarma dosyasını da diskten kalıcı sil");
+        MotionFx.enhanceCheckBox(deleteKeyCheck);
 
         VBox dangerBox = new VBox(6,
                 new Label("Kalıcı Silme Uyarısı"),
@@ -807,15 +806,15 @@ public final class VaultDrawers {
         Button tabPwBtn = new Button("Parola");
         Button tabKeyBtn = new Button(".key");
         Button tabManageBtn = new Button("Kasa Yönetimi");
-        tabPwBtn.getStyleClass().addAll("segmented-btn", "segmented-btn-active");
+        tabPwBtn.getStyleClass().add("segmented-btn");
         tabKeyBtn.getStyleClass().add("segmented-btn");
         tabManageBtn.getStyleClass().add("segmented-btn");
         for (Button b : new Button[]{tabPwBtn, tabKeyBtn, tabManageBtn}) {
             b.setMaxWidth(Double.MAX_VALUE);
             HBox.setHgrow(b, Priority.ALWAYS);
         }
-        HBox tabBar = new HBox(4, tabPwBtn, tabKeyBtn, tabManageBtn);
-        tabBar.getStyleClass().add("segmented-bar");
+        MotionFx.SegmentedSwitch tabBar = new MotionFx.SegmentedSwitch(4, tabPwBtn, tabKeyBtn, tabManageBtn);
+        tabBar.setActive(tabPwBtn, false);
 
         // Tab 1: Password
         PasswordInputRow curPwInput = new PasswordInputRow("Mevcut parola", themeManager);
@@ -922,6 +921,7 @@ public final class VaultDrawers {
             }
         });
         CheckBox delKeyCheck = new CheckBox(".key kurtarma dosyasını da diskten kalıcı sil");
+        MotionFx.enhanceCheckBox(delKeyCheck);
         Label delError = createErrorBanner();
         Button delVaultBtn = new Button("Kasayı Kalıcı Olarak Sil");
         delVaultBtn.getStyleClass().add("btn-danger");
@@ -951,17 +951,17 @@ public final class VaultDrawers {
         Runnable selectPwTab = () -> {
             int dir = activeTabIdx[0] > 0 ? -1 : 0;
             activeTabIdx[0] = 0;
-            setActiveSecurityTab(tabPwBtn, pwTabPane, dir, tabPwBtn, tabKeyBtn, tabManageBtn, pwTabPane, keyTabPane, manageTabPane);
+            setActiveSecurityTab(tabBar, tabPwBtn, pwTabPane, dir, pwTabPane, keyTabPane, manageTabPane);
         };
         Runnable selectKeyTab = () -> {
             int dir = Integer.compare(1, activeTabIdx[0]);
             activeTabIdx[0] = 1;
-            setActiveSecurityTab(tabKeyBtn, keyTabPane, dir, tabPwBtn, tabKeyBtn, tabManageBtn, pwTabPane, keyTabPane, manageTabPane);
+            setActiveSecurityTab(tabBar, tabKeyBtn, keyTabPane, dir, pwTabPane, keyTabPane, manageTabPane);
         };
         Runnable selectManageTab = () -> {
             int dir = activeTabIdx[0] < 2 ? 1 : 0;
             activeTabIdx[0] = 2;
-            setActiveSecurityTab(tabManageBtn, manageTabPane, dir, tabPwBtn, tabKeyBtn, tabManageBtn, pwTabPane, keyTabPane, manageTabPane);
+            setActiveSecurityTab(tabBar, tabManageBtn, manageTabPane, dir, pwTabPane, keyTabPane, manageTabPane);
         };
 
         MotionFx.attachPressSpring(updatePwBtn);
@@ -1164,15 +1164,12 @@ public final class VaultDrawers {
     }
 
     private static void setActiveSecurityTab(
+            MotionFx.SegmentedSwitch tabBar,
             Button activeBtn,
             VBox activePane,
             int direction,
-            Button b1, Button b2, Button b3,
             VBox p1, VBox p2, VBox p3) {
-        for (Button b : new Button[]{b1, b2, b3}) {
-            b.getStyleClass().remove("segmented-btn-active");
-        }
-        activeBtn.getStyleClass().add("segmented-btn-active");
+        tabBar.setActive(activeBtn, direction != 0);
 
         for (VBox p : new VBox[]{p1, p2, p3}) {
             boolean show = p == activePane;
@@ -1202,14 +1199,18 @@ public final class VaultDrawers {
             b.setMaxWidth(Double.MAX_VALUE);
             HBox.setHgrow(b, Priority.ALWAYS);
         }
-        HBox themeSwitch = new HBox(4, autoThemeBtn, darkThemeBtn, lightThemeBtn);
-        themeSwitch.getStyleClass().add("segmented-bar");
+        MotionFx.SegmentedSwitch themeSwitch = new MotionFx.SegmentedSwitch(4, autoThemeBtn, darkThemeBtn, lightThemeBtn);
 
+        boolean[] themeInit = {false};
         Runnable syncThemeButtons = () -> {
             ThemeMode cur = themeManager.mode();
-            setSegmentedActive(autoThemeBtn, cur == ThemeMode.AUTO);
-            setSegmentedActive(darkThemeBtn, cur == ThemeMode.DARK);
-            setSegmentedActive(lightThemeBtn, cur == ThemeMode.LIGHT);
+            Button active = switch (cur) {
+                case AUTO -> autoThemeBtn;
+                case DARK -> darkThemeBtn;
+                case LIGHT -> lightThemeBtn;
+            };
+            themeSwitch.setActive(active, themeInit[0]);
+            themeInit[0] = true;
         };
         syncThemeButtons.run();
         autoThemeBtn.setOnAction(e -> {
@@ -1228,6 +1229,33 @@ public final class VaultDrawers {
         Label themeRuleNote = mutedWrap("Otomatik modda 07:00–19:00 arası Açık (soft buz mavisi), 19:00–07:00 arası Koyu (obsidyen safir) tema uygulanır.");
         themeRuleNote.setStyle("-fx-font-size: 11.5px;");
 
+        boolean[] selectedGridView = {settings.defaultGridView()};
+        Button gridViewBtn = new Button("Izgara");
+        Button listViewBtn = new Button("Liste");
+        for (Button b : new Button[]{gridViewBtn, listViewBtn}) {
+            b.getStyleClass().add("segmented-btn");
+            b.setMaxWidth(Double.MAX_VALUE);
+            HBox.setHgrow(b, Priority.ALWAYS);
+        }
+        MotionFx.SegmentedSwitch defaultViewSwitch = new MotionFx.SegmentedSwitch(4, gridViewBtn, listViewBtn);
+        defaultViewSwitch.setActive(selectedGridView[0] ? gridViewBtn : listViewBtn, false);
+        gridViewBtn.setOnAction(e -> {
+            if (!selectedGridView[0]) {
+                selectedGridView[0] = true;
+                defaultViewSwitch.setActive(gridViewBtn, true);
+            }
+        });
+        listViewBtn.setOnAction(e -> {
+            if (selectedGridView[0]) {
+                selectedGridView[0] = false;
+                defaultViewSwitch.setActive(listViewBtn, true);
+            }
+        });
+
+        CheckBox previewDefaultCheck = new CheckBox("Kasa açıldığında önizleme panelini göster");
+        previewDefaultCheck.setSelected(settings.previewEnabledByDefault());
+        MotionFx.enhanceCheckBox(previewDefaultCheck);
+
         // CPU Profile 3-way switch
         CpuProfile[] selectedProfile = {settings.cpuProfile()};
         Button lowBtn = new Button(CpuProfile.POWER_SAVER.displayName());
@@ -1238,20 +1266,25 @@ public final class VaultDrawers {
             b.setMaxWidth(Double.MAX_VALUE);
             HBox.setHgrow(b, Priority.ALWAYS);
         }
-        HBox cpuSwitch = new HBox(4, lowBtn, balBtn, fastBtn);
-        cpuSwitch.getStyleClass().add("segmented-bar");
+        MotionFx.SegmentedSwitch cpuSwitch = new MotionFx.SegmentedSwitch(4, lowBtn, balBtn, fastBtn);
 
         Spinner<Integer> workerSpinner = new Spinner<>(
                 new SpinnerValueFactory.IntegerSpinnerValueFactory(0, 16, settings.maxWorkersOverride()));
         workerSpinner.setEditable(true);
         workerSpinner.setMaxWidth(Double.MAX_VALUE);
+        MotionFx.enhanceSpinner(workerSpinner);
 
         Label workerInfo = mutedWrap("");
         workerInfo.setStyle("-fx-font-size: 11.5px;");
+        boolean[] cpuInit = {false};
         Runnable updateCpuUi = () -> {
-            setSegmentedActive(lowBtn, selectedProfile[0] == CpuProfile.POWER_SAVER);
-            setSegmentedActive(balBtn, selectedProfile[0] == CpuProfile.BALANCED);
-            setSegmentedActive(fastBtn, selectedProfile[0] == CpuProfile.PERFORMANCE);
+            Button activeCpu = switch (selectedProfile[0]) {
+                case POWER_SAVER -> lowBtn;
+                case BALANCED -> balBtn;
+                case PERFORMANCE -> fastBtn;
+            };
+            cpuSwitch.setActive(activeCpu, cpuInit[0]);
+            cpuInit[0] = true;
             int val = workerSpinner.getValue() == null ? 0 : workerSpinner.getValue();
             workerInfo.setText("Eşzamanlı işlem sayısı: " + selectedProfile[0].computeWorkerCount(val) + " (0 = otomatik)");
         };
@@ -1283,8 +1316,10 @@ public final class VaultDrawers {
             }
         });
         autoLockCombo.setButtonCell(autoLockCombo.getCellFactory().call(null));
+        MotionFx.enhanceComboBox(autoLockCombo);
 
         CheckBox keepActiveCheck = new CheckBox("Aktarım sürerken açık tut");
+        MotionFx.enhanceCheckBox(keepActiveCheck);
         keepActiveCheck.setSelected(settings.keepUnlockedDuringTransfers());
         keepActiveCheck.setMinWidth(Region.USE_PREF_SIZE);
         keepActiveCheck.setTooltip(new Tooltip("Dosya ekleme, dışa aktarma veya sıkıştırma devam ederken hareketsizlik süresi dolsa bile kasa kilitlenmez. Bilgisayar uyku moduna geçerse kasa yine kilitlenir."));
@@ -1295,11 +1330,17 @@ public final class VaultDrawers {
         Label keepActiveNote = mutedWrap("İşaretliyken dosya aktarımı bitene kadar süre sayacı durur; işlem bittiğinde sayaç yeniden başlar.");
         keepActiveNote.setStyle("-fx-font-size: 11.5px;");
 
+        CheckBox autoCompactCheck = new CheckBox("Kasa kapatıldığında otomatik sıkıştır");
+        MotionFx.enhanceCheckBox(autoCompactCheck);
+        autoCompactCheck.setSelected(settings.autoCompactOnClose());
+        Label autoCompactNote = mutedWrap("İşaretliyken kasa kilitlendiğinde veya uygulama kapatıldığında boşta alan varsa kasa otomatik olarak küçültülür.");
+        autoCompactNote.setStyle("-fx-font-size: 11.5px;");
+
         // Cache stats
         Label cacheLabel = mutedWrap("");
         cacheLabel.setStyle("-fx-font-size: 11.5px;");
         Runnable refreshCache = () -> {
-            if (session == null) {
+            if (session == null || session.isClosed()) {
                 cacheLabel.setText("Şu anda açık kasa yok.");
             } else {
                 BlockCache.CacheStats st = session.getCacheStats();
@@ -1310,16 +1351,22 @@ public final class VaultDrawers {
         refreshCache.run();
 
         Button clearCacheBtn = new Button("Önbelleği Şimdi Temizle");
-        clearCacheBtn.setDisable(session == null);
+        clearCacheBtn.setDisable(session == null || session.isClosed());
         clearCacheBtn.setOnAction(e -> {
-            if (session != null) {
+            if (session != null && !session.isClosed()) {
                 session.clearCache();
                 refreshCache.run();
                 shell.showToast(ToastType.INFO, "Önbellek Temizlendi", "Bellekteki geçici veriler temizlendi.");
             }
         });
 
-        VBox themeCard = new VBox(10, sectionHeader("GÖRÜNÜM & TEMA"), themeSwitch, themeRuleNote);
+        VBox themeCard = new VBox(10,
+                sectionHeader("GÖRÜNÜM & TEMA"),
+                themeSwitch,
+                themeRuleNote,
+                fieldLabel("Varsayılan Kasa Görünümü"),
+                defaultViewSwitch,
+                previewDefaultCheck);
         themeCard.getStyleClass().add("panel-card");
         themeCard.setPadding(new Insets(14));
 
@@ -1335,6 +1382,8 @@ public final class VaultDrawers {
                 sectionHeader("OTOMATİK KİLİT & ÖNBELLEK"),
                 fieldLabel("Hareketsizlik Sonrası Kilitleme"), autoLockRow,
                 keepActiveNote,
+                autoCompactCheck,
+                autoCompactNote,
                 cacheLabel,
                 clearCacheBtn);
         lockCacheCard.getStyleClass().add("panel-card");
@@ -1356,8 +1405,11 @@ public final class VaultDrawers {
             settings.setMaxWorkersOverride(workerSpinner.getValue() == null ? 0 : workerSpinner.getValue());
             settings.setAutoLockMinutes(autoLockCombo.getValue() == null ? 10 : autoLockCombo.getValue());
             settings.setKeepUnlockedDuringTransfers(keepActiveCheck.isSelected());
+            settings.setAutoCompactOnClose(autoCompactCheck.isSelected());
+            settings.setDefaultViewMode(selectedGridView[0] ? "GRID" : "LIST");
+            settings.setPreviewEnabledByDefault(previewDefaultCheck.isSelected());
             settings.save();
-            if (session != null) {
+            if (session != null && !session.isClosed()) {
                 session.reconfigureWorkers(settings.cpuProfile(), settings.maxWorkersOverride());
             }
             if (autoLockMonitor != null) {
@@ -1381,16 +1433,6 @@ public final class VaultDrawers {
     }
 
     // ========================= SHARED UI HELPERS =========================
-
-    private static void setSegmentedActive(Button btn, boolean active) {
-        if (active) {
-            if (!btn.getStyleClass().contains("segmented-btn-active")) {
-                btn.getStyleClass().add("segmented-btn-active");
-            }
-        } else {
-            btn.getStyleClass().remove("segmented-btn-active");
-        }
-    }
 
     private static Label fieldLabel(String text) {
         Label lbl = new Label(text);
