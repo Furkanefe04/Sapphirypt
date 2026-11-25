@@ -1347,3 +1347,39 @@
     -fx-background-radius: 10px;
     -fx-border-radius: 10px;
 }
+
+.version-notes-link {
+    -fx-background-radius: 10px;
+    -fx-border-radius: 10px;
+    -fx-border-width: 1px;
+    -fx-padding: 8px 12px;
+    -fx-cursor: hand;
+}
+
+.theme-dark .version-notes-link {
+    -fx-background-color: rgba(15, 23, 42, 0.72);
+    -fx-border-color: #1E2E4F;
+}
+
+.theme-dark .version-notes-link:hover {
+    -fx-background-color: rgba(59, 130, 246, 0.16);
+    -fx-border-color: rgba(96, 165, 250, 0.55);
+}
+
+.theme-dark .version-notes-link:pressed {
+    -fx-background-color: rgba(37, 99, 235, 0.24);
+}
+
+.theme-light .version-notes-link {
+    -fx-background-color: rgba(255, 255, 255, 0.9);
+    -fx-border-color: #C7DAF5;
+}
+
+.theme-light .version-notes-link:hover {
+    -fx-background-color: rgba(59, 130, 246, 0.12);
+    -fx-border-color: #60A5FA;
+}
+
+.theme-light .version-notes-link:pressed {
+    -fx-background-color: rgba(37, 99, 235, 0.2);
+}

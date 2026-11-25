@@ -32,6 +32,7 @@ import javafx.scene.shape.Rectangle;
 import javafx.scene.control.Button;
 import javafx.scene.control.CheckBox;
 import javafx.scene.control.ComboBox;
+import javafx.scene.control.ContentDisplay;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.Label;
 import javafx.scene.control.MenuButton;
@@ -264,11 +265,13 @@ public final class VaultView extends StackPane implements AutoCloseable {
     private final Button inspectorFavBtn = new Button();
     private final Button inspectorTagsBtn = new Button();
     private final FlowPane inspectorTagsBox = new FlowPane(6, 6);
-    private final VBox versionHistorySection = new VBox(6);
-    private final Label versionHistoryHeader = new Label();
-    private final Button versionClearAllBtn = new Button();
-    private final VBox versionHistoryList = new VBox(6);
-    private final ScrollPane versionHistoryScroll = new ScrollPane(versionHistoryList);
+    private final Button versionNotesLinkBtn = new Button();
+    private final Label versionNotesTitleLbl = new Label();
+    private final Label versionNotesCountBadge = new Label();
+    private final Label versionNotesArrowLbl = new Label("→");
+    private UUID activeVersionDrawerEntryId;
+    private VBox activeVersionDrawerBody;
+    private Button activeVersionDrawerClearBtn;
     private final StackPane previewContainer = new StackPane();
     private final Button openExternalBtn = new Button();
     private final Button exportSelectedBtn = new Button();
@@ -411,7 +414,7 @@ public final class VaultView extends StackPane implements AutoCloseable {
 
         inspectorHeader.setText(I18n.t("ÖNİZLEME VE AYRINTILAR", "PREVIEW & DETAILS"));
         inspectorTagsBtn.setText(I18n.t("Etiketler", "Tags"));
-        versionClearAllBtn.setText(I18n.t("Temizle", "Clear"));
+        versionNotesTitleLbl.setText(I18n.t("Sürüm Notları", "Version Notes"));
         openExternalBtn.setText(I18n.t("Harici Uygulamada Aç", "Open in External App"));
         exportSelectedBtn.setText(I18n.t("Dışa Aktar", "Export"));
         extNote.setText(I18n.t(
@@ -1565,23 +1568,22 @@ public final class VaultView extends StackPane implements AutoCloseable {
         placeholder.getStyleClass().add("muted-text");
         previewContainer.getChildren().setAll(placeholder);
 
-        versionHistoryHeader.getStyleClass().add("section-title");
-        versionClearAllBtn.setText(I18n.t("Temizle", "Clear"));
-        versionClearAllBtn.getStyleClass().add("btn-ghost");
-        versionClearAllBtn.setPadding(new Insets(2, 8, 2, 8));
-        versionClearAllBtn.setStyle("-fx-font-size: 11px;");
-        Region vhSpacer = new Region();
-        HBox.setHgrow(vhSpacer, Priority.ALWAYS);
-        HBox vhTop = new HBox(6, versionHistoryHeader, vhSpacer, versionClearAllBtn);
-        vhTop.setAlignment(Pos.CENTER_LEFT);
-
-        versionHistoryScroll.getStyleClass().add("transparent-scroll");
-        versionHistoryScroll.setFitToWidth(true);
-        versionHistoryScroll.setMaxHeight(150);
-
-        versionHistorySection.getChildren().setAll(vhTop, versionHistoryScroll);
-        versionHistorySection.setVisible(false);
-        versionHistorySection.setManaged(false);
+        versionNotesTitleLbl.setText(I18n.t("Sürüm Notları", "Version Notes"));
+        versionNotesTitleLbl.getStyleClass().add("primary-text");
+        versionNotesTitleLbl.setStyle("-fx-font-size: 12px; -fx-font-weight: bold;");
+        versionNotesCountBadge.getStyleClass().add("tag-pill");
+        versionNotesArrowLbl.getStyleClass().add("muted-text");
+        versionNotesArrowLbl.setStyle("-fx-font-size: 13px; -fx-font-weight: bold;");
+        Region vnSpacer = new Region();
+        HBox.setHgrow(vnSpacer, Priority.ALWAYS);
+        HBox vnContent = new HBox(8, versionNotesTitleLbl, versionNotesCountBadge, vnSpacer, versionNotesArrowLbl);
+        vnContent.setAlignment(Pos.CENTER_LEFT);
+        versionNotesLinkBtn.setGraphic(vnContent);
+        versionNotesLinkBtn.setContentDisplay(ContentDisplay.GRAPHIC_ONLY);
+        versionNotesLinkBtn.setMaxWidth(Double.MAX_VALUE);
+        versionNotesLinkBtn.getStyleClass().add("version-notes-link");
+        versionNotesLinkBtn.setVisible(false);
+        versionNotesLinkBtn.setManaged(false);
 
         openExternalBtn.setText(I18n.t("Harici Uygulamada Aç", "Open in External App"));
         openExternalBtn.setMaxWidth(Double.MAX_VALUE);
@@ -1607,7 +1609,7 @@ public final class VaultView extends StackPane implements AutoCloseable {
                 inspectorQuickRow,
                 inspectorTagsBox,
                 previewContainer,
-                versionHistorySection,
+                versionNotesLinkBtn,
                 openExternalBtn,
                 exportSelectedBtn,
                 extNote);
@@ -1690,6 +1692,7 @@ public final class VaultView extends StackPane implements AutoCloseable {
             refreshTableAndBreadcrumbs(meta);
             refreshStorageStats();
             refreshBadges();
+            refreshVersionNotesDrawerIfOpen(meta);
         } catch (Exception e) {
             shell.showErrorOverlay(
                     I18n.t("Yenileme Hatası", "Refresh Error"),
@@ -1990,9 +1993,9 @@ public final class VaultView extends StackPane implements AutoCloseable {
             inspectorTagsBox.getChildren().clear();
             inspectorTagsBox.setVisible(false);
             inspectorTagsBox.setManaged(false);
-            versionHistoryList.getChildren().clear();
-            versionHistorySection.setVisible(false);
-            versionHistorySection.setManaged(false);
+            versionNotesLinkBtn.setVisible(false);
+            versionNotesLinkBtn.setManaged(false);
+            versionNotesLinkBtn.setOnAction(null);
             Label ph = new Label(I18n.t("Önizleme alanı", "Preview area"));
             ph.getStyleClass().add("muted-text");
             previewContainer.getChildren().setAll(ph);
@@ -2080,56 +2083,192 @@ public final class VaultView extends StackPane implements AutoCloseable {
     }
 
     private void updateVersionHistoryUi(VaultEntry entry) {
-        versionHistoryList.getChildren().clear();
         if (!entry.isFile() || entry.versions().isEmpty()) {
-            versionHistorySection.setVisible(false);
-            versionHistorySection.setManaged(false);
+            versionNotesLinkBtn.setVisible(false);
+            versionNotesLinkBtn.setManaged(false);
+            versionNotesLinkBtn.setOnAction(null);
             return;
         }
-        versionHistoryHeader.setText(I18n.t("SÜRÜM GEÇMİŞİ (", "VERSION HISTORY (") + entry.versions().size() + ")");
-        versionClearAllBtn.setOnAction(e -> handleClearVersions(entry));
+        versionNotesTitleLbl.setText(I18n.t("Sürüm Notları", "Version Notes"));
+        versionNotesCountBadge.setText(String.valueOf(entry.versions().size()));
+        versionNotesLinkBtn.setOnAction(e -> openVersionNotesDrawer(entry.id()));
+        versionNotesLinkBtn.setVisible(true);
+        versionNotesLinkBtn.setManaged(true);
+    }
 
-        for (FileVersion ver : entry.versions()) {
-            Label timeLbl = new Label(FormatUtils.formatTimestamp(ver.savedAt()));
-            timeLbl.getStyleClass().add("primary-text");
-            timeLbl.setStyle("-fx-font-size: 11px; -fx-font-weight: bold;");
-
-            Label sizeLbl = new Label(FormatUtils.formatBytes(ver.logicalSize()));
-            sizeLbl.getStyleClass().add("muted-text");
-            sizeLbl.setStyle("-fx-font-size: 10.5px;");
-
-            Button restoreBtn = new Button(I18n.t("Geri Yükle", "Restore"));
-            restoreBtn.getStyleClass().add("btn-ghost");
-            restoreBtn.setPadding(new Insets(2, 7, 2, 7));
-            restoreBtn.setStyle("-fx-font-size: 10.5px;");
-            restoreBtn.setOnAction(ev -> handleRestoreVersion(entry, ver));
-
-            Button exportVerBtn = new Button(I18n.t("Dışa Aktar", "Export"));
-            exportVerBtn.getStyleClass().add("btn-ghost");
-            exportVerBtn.setPadding(new Insets(2, 7, 2, 7));
-            exportVerBtn.setStyle("-fx-font-size: 10.5px;");
-            exportVerBtn.setOnAction(ev -> handleExportVersion(entry, ver));
-
-            Button deleteVerBtn = new Button(I18n.t("Sil", "Del"));
-            deleteVerBtn.getStyleClass().add("btn-danger");
-            deleteVerBtn.setPadding(new Insets(2, 7, 2, 7));
-            deleteVerBtn.setStyle("-fx-font-size: 10.5px;");
-            deleteVerBtn.setOnAction(ev -> handleDeleteVersion(entry.id(), ver.versionId()));
-
-            Region sp = new Region();
-            HBox.setHgrow(sp, Priority.ALWAYS);
-            HBox topRow = new HBox(6, timeLbl, sp, sizeLbl);
-            topRow.setAlignment(Pos.CENTER_LEFT);
-            HBox btnRow = new HBox(4, restoreBtn, exportVerBtn, deleteVerBtn);
-            btnRow.setAlignment(Pos.CENTER_RIGHT);
-
-            VBox card = new VBox(4, topRow, btnRow);
-            card.getStyleClass().add("version-row-card");
-            card.setPadding(new Insets(6, 8, 6, 8));
-            versionHistoryList.getChildren().add(card);
+    private void openVersionNotesDrawer(UUID entryId) {
+        VaultMetadata meta;
+        try {
+            meta = session.getMetadataSnapshot();
+        } catch (Exception ignored) {
+            return;
         }
-        versionHistorySection.setVisible(true);
-        versionHistorySection.setManaged(true);
+        VaultEntry entry = meta.getEntry(entryId).orElse(null);
+        if (entry == null || !entry.isFile()) {
+            return;
+        }
+
+        VBox drawerBody = new VBox(12);
+
+        Button clearAllBtn = new Button(I18n.t("Tümünü Temizle", "Clear All"));
+        clearAllBtn.getStyleClass().add("btn-danger");
+
+        Button closeBtn = new Button(I18n.t("Kapat", "Close"));
+        closeBtn.getStyleClass().add("btn-ghost");
+        closeBtn.setOnAction(e -> shell.closeDrawer());
+
+        Region footerSpacer = new Region();
+        HBox.setHgrow(footerSpacer, Priority.ALWAYS);
+        HBox footer = new HBox(10, clearAllBtn, footerSpacer, closeBtn);
+        footer.setAlignment(Pos.CENTER_LEFT);
+
+        activeVersionDrawerEntryId = entryId;
+        activeVersionDrawerBody = drawerBody;
+        activeVersionDrawerClearBtn = clearAllBtn;
+
+        populateVersionNotesDrawer(entry, meta);
+
+        shell.openDrawer(
+                I18n.t("Sürüm Notları", "Version Notes"),
+                entry.name(),
+                drawerBody,
+                footer,
+                null,
+                () -> {
+                    if (Objects.equals(activeVersionDrawerEntryId, entryId) && activeVersionDrawerBody == drawerBody) {
+                        activeVersionDrawerEntryId = null;
+                        activeVersionDrawerBody = null;
+                        activeVersionDrawerClearBtn = null;
+                    }
+                });
+    }
+
+    private void refreshVersionNotesDrawerIfOpen(VaultMetadata meta) {
+        if (activeVersionDrawerEntryId == null || activeVersionDrawerBody == null || activeVersionDrawerBody.getScene() == null) {
+            return;
+        }
+        VaultEntry entry = meta.getEntry(activeVersionDrawerEntryId).orElse(null);
+        if (entry == null || !entry.isFile()) {
+            shell.closeDrawer();
+            return;
+        }
+        populateVersionNotesDrawer(entry, meta);
+    }
+
+    private void populateVersionNotesDrawer(VaultEntry entry, VaultMetadata meta) {
+        if (activeVersionDrawerBody == null) {
+            return;
+        }
+        activeVersionDrawerBody.getChildren().clear();
+
+        Label activeTitleLbl = new Label(I18n.t("Mevcut Sürüm (Etkin)", "Current Version (Active)"));
+        activeTitleLbl.getStyleClass().add("primary-text");
+        activeTitleLbl.setStyle("-fx-font-size: 12.5px; -fx-font-weight: bold;");
+
+        Label activeBadge = new Label(I18n.t("Etkin", "Active"));
+        activeBadge.getStyleClass().add("tag-pill");
+
+        Region activeSpacer = new Region();
+        HBox.setHgrow(activeSpacer, Priority.ALWAYS);
+        HBox activeHeader = new HBox(8, activeTitleLbl, activeSpacer, activeBadge);
+        activeHeader.setAlignment(Pos.CENTER_LEFT);
+
+        String pathStr = "/";
+        try {
+            pathStr = meta.buildPath(entry.id());
+        } catch (Exception ignored) {
+        }
+
+        Label activeMetaLbl = new Label(String.format(
+                I18n.t("Yol: %s\nBoyut: %s  •  %d blok\nDeğiştirilme: %s",
+                        "Path: %s\nSize: %s  •  %d blocks\nModified: %s"),
+                pathStr,
+                FormatUtils.formatBytes(entry.logicalSize()),
+                entry.blocks().size(),
+                FormatUtils.formatTimestamp(entry.modifiedAt())));
+        activeMetaLbl.getStyleClass().add("muted-text");
+        activeMetaLbl.setWrapText(true);
+        activeMetaLbl.setStyle("-fx-font-size: 11.5px;");
+
+        VBox activeCard = new VBox(6, activeHeader, activeMetaLbl);
+        activeCard.getStyleClass().add("version-row-card");
+        activeCard.setPadding(new Insets(10, 12, 10, 12));
+        activeVersionDrawerBody.getChildren().add(activeCard);
+
+        List<FileVersion> versions = entry.versions();
+        Label archivedHeader = new Label(
+                I18n.t("KAYITLI ESKİ SÜRÜMLER (", "ARCHIVED VERSIONS (")
+                        + versions.size() + " / " + VaultMetadata.MAX_FILE_VERSIONS + ")");
+        archivedHeader.getStyleClass().add("section-title");
+        archivedHeader.setPadding(new Insets(4, 0, 0, 0));
+        activeVersionDrawerBody.getChildren().add(archivedHeader);
+
+        if (versions.isEmpty()) {
+            Label emptyLbl = new Label(I18n.t(
+                    "Bu dosya için kayıtlı eski sürüm bulunmuyor.",
+                    "No archived versions for this file."));
+            emptyLbl.getStyleClass().add("muted-text");
+            emptyLbl.setWrapText(true);
+            activeVersionDrawerBody.getChildren().add(emptyLbl);
+        } else {
+            for (int i = 0; i < versions.size(); i++) {
+                FileVersion ver = versions.get(i);
+                int versionNum = versions.size() - i;
+
+                Label verTitleLbl = new Label(I18n.t("Sürüm #", "Version #") + versionNum);
+                verTitleLbl.getStyleClass().add("primary-text");
+                verTitleLbl.setStyle("-fx-font-size: 12px; -fx-font-weight: bold;");
+
+                Label timeLbl = new Label(FormatUtils.formatTimestamp(ver.savedAt()));
+                timeLbl.getStyleClass().add("muted-text");
+                timeLbl.setStyle("-fx-font-size: 11px;");
+
+                Region sp = new Region();
+                HBox.setHgrow(sp, Priority.ALWAYS);
+                HBox topRow = new HBox(8, verTitleLbl, sp, timeLbl);
+                topRow.setAlignment(Pos.CENTER_LEFT);
+
+                Label detailLbl = new Label(
+                        FormatUtils.formatBytes(ver.logicalSize())
+                                + "  •  " + ver.blocks().size() + " " + I18n.t("blok", "blocks")
+                                + "  •  ID: " + ver.versionId().toString().substring(0, 8));
+                detailLbl.getStyleClass().add("muted-text");
+                detailLbl.setWrapText(true);
+                detailLbl.setStyle("-fx-font-size: 11.5px;");
+
+                Button restoreBtn = new Button(I18n.t("Geri Yükle", "Restore"));
+                restoreBtn.getStyleClass().add("btn-ghost");
+                restoreBtn.setPadding(new Insets(4, 10, 4, 10));
+                restoreBtn.setStyle("-fx-font-size: 11px;");
+                restoreBtn.setOnAction(ev -> handleRestoreVersion(entry, ver));
+
+                Button exportVerBtn = new Button(I18n.t("Dışa Aktar", "Export"));
+                exportVerBtn.getStyleClass().add("btn-ghost");
+                exportVerBtn.setPadding(new Insets(4, 10, 4, 10));
+                exportVerBtn.setStyle("-fx-font-size: 11px;");
+                exportVerBtn.setOnAction(ev -> handleExportVersion(entry, ver));
+
+                Button deleteVerBtn = new Button(I18n.t("Sil", "Delete"));
+                deleteVerBtn.getStyleClass().add("btn-danger");
+                deleteVerBtn.setPadding(new Insets(4, 10, 4, 10));
+                deleteVerBtn.setStyle("-fx-font-size: 11px;");
+                deleteVerBtn.setOnAction(ev -> handleDeleteVersion(entry.id(), ver.versionId()));
+
+                HBox btnRow = new HBox(6, restoreBtn, exportVerBtn, deleteVerBtn);
+                btnRow.setAlignment(Pos.CENTER_RIGHT);
+
+                VBox card = new VBox(6, topRow, detailLbl, btnRow);
+                card.getStyleClass().add("version-row-card");
+                card.setPadding(new Insets(10, 12, 10, 12));
+                activeVersionDrawerBody.getChildren().add(card);
+            }
+        }
+
+        if (activeVersionDrawerClearBtn != null) {
+            activeVersionDrawerClearBtn.setText(I18n.t("Tümünü Temizle", "Clear All"));
+            activeVersionDrawerClearBtn.setDisable(versions.isEmpty());
+            activeVersionDrawerClearBtn.setOnAction(e -> handleClearVersions(entry));
+        }
     }
 
     private void loadTextPreviewAsync(VaultEntry entry) {
